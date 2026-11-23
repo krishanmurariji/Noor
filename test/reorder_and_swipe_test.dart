@@ -46,6 +46,9 @@ Future<void> holdAndDrag(WidgetTester t, String title, String past) async {
     await g.moveTo(Offset.lerp(from, below + const Offset(0, 30), i / 10)!);
     await t.pump(const Duration(milliseconds: 30));
   }
+  // The held song stays visible under the finger while it moves.
+  expect(find.text(title), findsOneWidget);
+  expect(t.getSize(find.text(title)).height, greaterThan(0));
   await g.up();
   await frames(t, 6);
 }

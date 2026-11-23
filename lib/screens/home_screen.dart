@@ -652,6 +652,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
           _moveSong(current, from - lead, (to - lead).clamp(0, 1 << 30)),
       proxyDecorator: (child, _, anim) => AnimatedBuilder(
         animation: anim,
+        child: child, // the held song itself
         builder: (_, c) => Transform.scale(
           scale: 1 + 0.04 * Curves.easeOut.transform(anim.value),
           child: Material(
