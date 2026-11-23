@@ -56,7 +56,20 @@ void main() {
   });
 
   group('the setting', () {
-    test('switching on, or choosing a preset while off, refreshes the audio path',
+    test('where the phone\'s equalizer is used (Samsung), Noor\'s stays off',
+        () async {
+      SharedPreferences.setMockInitialValues(
+          {kEqualizerKey: '{"on":true,"preset":"Rock"}'});
+      final n = EqualizerNotifier(null)..systemPreferred = () async => true;
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(n.state.on, isFalse);
+      expect(n.state.preset, 'Rock'); // kept for other phones
+      final p = await SharedPreferences.getInstance();
+      expect(p.getString(kEqualizerKey), contains('"on":false'));
+    });
+
+    test(
+        'switching on, or choosing a preset while off, refreshes the audio path',
         () async {
       SharedPreferences.setMockInitialValues({});
       var refreshed = 0;

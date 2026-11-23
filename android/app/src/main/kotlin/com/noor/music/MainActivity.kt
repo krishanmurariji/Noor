@@ -13,6 +13,7 @@ import java.io.File
 import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
+import android.media.audiofx.AudioEffect
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.content.Intent
@@ -329,6 +330,49 @@ class MainActivity : AudioServiceActivity() {
                 else -> result.notImplemented()
             }
         }
+
+        // The phone's own equalizer (Samsung's "Sound quality and effects").
+        // Noor tells the system which audio session is its music, so the
+        // phone's equalizer applies to it, and can open that equalizer.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "noor/system_eq")
+            .setMethodCallHandler { call, result ->
+                val session = (call.argument<Number>("session"))?.toInt() ?: 0
+                fun panel() = Intent(AudioEffect.ACTION_DISPLAY_AUDIO_EFFECT_CONTROL_PANEL)
+                    .putExtra(AudioEffect.EXTRA_AUDIO_SESSION, session)
+                    .putExtra(AudioEffect.EXTRA_PACKAGE_NAME, packageName)
+                    .putExtra(AudioEffect.EXTRA_CONTENT_TYPE, AudioEffect.CONTENT_TYPE_MUSIC)
+                when (call.method) {
+                    // Samsung phones: their own equalizer instead of Noor's
+                    // (an app equalizer silences playback there).
+                    "preferred" -> result.success(
+                        Build.MANUFACTURER.equals("samsung", ignoreCase = true) &&
+                            panel().resolveActivity(packageManager) != null)
+                    "open" -> {
+                        try {
+                            @Suppress("DEPRECATION")
+                            startActivityForResult(panel(), 7301)
+                            result.success(true)
+                        } catch (e: Exception) {
+                            result.success(false)
+                        }
+                    }
+                    "attach", "detach" -> {
+                        if (session != 0) {
+                            val action = if (call.method == "attach")
+                                AudioEffect.ACTION_OPEN_AUDIO_EFFECT_CONTROL_SESSION
+                            else AudioEffect.ACTION_CLOSE_AUDIO_EFFECT_CONTROL_SESSION
+                            try {
+                                app.sendBroadcast(Intent(action)
+                                    .putExtra(AudioEffect.EXTRA_AUDIO_SESSION, session)
+                                    .putExtra(AudioEffect.EXTRA_PACKAGE_NAME, packageName)
+                                    .putExtra(AudioEffect.EXTRA_CONTENT_TYPE, AudioEffect.CONTENT_TYPE_MUSIC))
+                            } catch (_: Exception) {}
+                        }
+                        result.success(null)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "noor/local_music")
             .setMethodCallHandler { call, result ->

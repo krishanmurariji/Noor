@@ -188,9 +188,12 @@ class SettingsScreen extends ConsumerWidget {
                 _Row(
                   icon: Icons.tune_rounded,
                   title: 'Equalizer',
-                  subtitle: ref.watch(equalizerProvider).on
-                      ? ref.watch(equalizerProvider).preset
-                      : 'Off · also on the record player\'s knob',
+                  subtitle:
+                      (ref.watch(systemEqualizerProvider).valueOrNull ?? false)
+                          ? 'Samsung\'s sound settings · also on the knob'
+                          : ref.watch(equalizerProvider).on
+                              ? ref.watch(equalizerProvider).preset
+                              : 'Off · also on the record player\'s knob',
                   onTap: () => showEqualizer(context),
                 ),
               ]),

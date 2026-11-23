@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -149,6 +150,18 @@ class EqState {
   }
 }
 
+/// Samsung phones: Noor's equalizer silences playback there, so the knob and
+/// Settings open Samsung's own equalizer instead (true once known).
+final systemEqualizerProvider = FutureProvider<bool>((ref) async {
+  try {
+    return await const MethodChannel('noor/system_eq')
+            .invokeMethod<bool>('preferred') ??
+        false;
+  } catch (_) {
+    return false;
+  }
+});
+
 /// The equalizer setting, saved, and applied to the player.
 class EqualizerNotifier extends StateNotifier<EqState> {
   EqualizerNotifier(this._eq,
@@ -157,6 +170,9 @@ class EqualizerNotifier extends StateNotifier<EqState> {
         super(const EqState()) {
     unawaited(_load());
   }
+
+  /// True where the phone's own equalizer replaces Noor's (Samsung).
+  Future<bool> Function() systemPreferred = () async => false;
 
   /// Null where there is no Android equalizer (tests, other platforms).
   final AndroidEqualizer? _eq;
@@ -177,6 +193,12 @@ class EqualizerNotifier extends StateNotifier<EqState> {
             bands: state.bands, minDb: state.minDb, maxDb: state.maxDb);
       }
     } catch (_) {}
+    // Where the phone's own equalizer is used, Noor's stays off (it would
+    // silence playback there).
+    if (state.on && await systemPreferred()) {
+      state = state.copyWith(on: false);
+      await _save();
+    }
     unawaited(_apply());
     // The phone's bands are known once the player has started.
     final eq = _eq;
@@ -257,5 +279,6 @@ final equalizerProvider =
   try {
     h = ref.read(audioHandlerProvider);
   } catch (_) {}
-  return EqualizerNotifier(h?.equalizer, onSwitched: h?.refreshAudioPath);
+  return EqualizerNotifier(h?.equalizer, onSwitched: h?.refreshAudioPath)
+    ..systemPreferred = () => ref.read(systemEqualizerProvider.future);
 });

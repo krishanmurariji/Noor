@@ -114,6 +114,38 @@ class NebulaAudioHandler extends BaseAudioHandler with SeekHandler {
     } catch (_) {}
   }
 
+  // ── The phone's own equalizer ─────────────────────────────────────────────
+  static const _systemEq = MethodChannel('noor/system_eq');
+  int? _session;
+
+  /// Tells Android which audio session is Noor's music, so the phone's own
+  /// equalizer (Samsung's, or an equalizer app) applies to it.
+  void _followAudioSession() {
+    _player.androidAudioSessionIdStream.listen((id) async {
+      if (id == null || id == _session) return;
+      final old = _session;
+      _session = id;
+      try {
+        if (old != null) {
+          await _systemEq.invokeMethod('detach', {'session': old});
+        }
+        await _systemEq.invokeMethod('attach', {'session': id});
+        nlog('[N] audio session $id shared with the phone\'s equalizer');
+      } catch (_) {/* not on Android */}
+    });
+  }
+
+  /// Opens the phone's own equalizer for Noor's music. False if it could not.
+  Future<bool> openSystemEqualizer() async {
+    try {
+      return await _systemEq.invokeMethod<bool>('open',
+              {'session': _session ?? _player.androidAudioSessionId ?? 0}) ??
+          false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// After the equalizer is switched on or off. On some phones attaching
   /// the equalizer to the sound that is already playing silences it (even
   /// at Flat), and a seek does not help. Reloading the song where it is
@@ -347,6 +379,7 @@ class NebulaAudioHandler extends BaseAudioHandler with SeekHandler {
   Stream<void> get queueChanges => _queueChanged.stream;
 
   NebulaAudioHandler() {
+    _followAudioSession();
     unawaited(_loadQuality());
     _startUpgrades();
     _player.playbackEventStream.listen(

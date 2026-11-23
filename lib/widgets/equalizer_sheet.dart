@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../screens/settings_screen.dart' show NoorToggle;
+import '../services/audio_handler.dart';
 import '../services/equalizer_settings.dart';
 import '../theme/noor_palette.dart';
 import '../theme/noor_song_card.dart';
@@ -17,8 +18,19 @@ double knobTurnFor(EqState eq) {
 }
 
 /// The equalizer, opened from the knob on the record player: on/off,
-/// presets, and the phone's bands to fine-tune.
-Future<void> showEqualizer(BuildContext context) {
+/// presets, and the phone's bands to fine-tune. On Samsung phones, where
+/// Noor's equalizer silences playback, Samsung's own equalizer opens instead
+/// (it applies to Noor's music).
+Future<void> showEqualizer(BuildContext context) async {
+  final container = ProviderScope.containerOf(context, listen: false);
+  if (await container.read(systemEqualizerProvider.future)) {
+    try {
+      final opened =
+          await container.read(audioHandlerProvider).openSystemEqualizer();
+      if (opened) return;
+    } catch (_) {}
+  }
+  if (!context.mounted) return;
   final t = NoorTheme.of(context);
   return showModalBottomSheet<void>(
     context: context,
