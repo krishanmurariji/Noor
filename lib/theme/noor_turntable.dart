@@ -43,12 +43,19 @@ class NoorTurntable extends StatefulWidget {
   final double knobTurn;
   final bool eqOn;
 
-  /// The volume slider's track, as fractions of the size.
-  static const double sliderX = 0.875, sliderTop = 0.42, sliderBottom = 0.60;
+  /// The tone arm's base: centre and radius, as fractions of the size.
+  static const Offset armBase = Offset(0.84, 0.16);
+  static const double armBaseRadius = 0.095;
 
-  /// The knob's centre and radius, as fractions of the size.
-  static const Offset knobCentre = Offset(0.84, 0.80);
-  static const double knobRadius = 0.075;
+  /// The knob mirrors the arm's base: same size, the same distance from the
+  /// bottom as the base is from the top.
+  static const Offset knobCentre = Offset(0.84, 1 - 0.16);
+  static const double knobRadius = armBaseRadius;
+
+  /// The volume slider: halfway between the arm's base and the knob, and
+  /// with the same gap to the record's well (which ends at 0.87) as to the
+  /// edge of the body (0.982).
+  static const double sliderX = 0.935, sliderTop = 0.41, sliderBottom = 0.59;
 
   /// The volume slider's dot: blue up to 60 %, red above.
   static Color volumeDot(double v) =>
@@ -193,10 +200,10 @@ class _NoorTurntableState extends State<NoorTurntable>
             ),
           if (widget.onKnob != null)
             Positioned(
-              left: s * (NoorTurntable.knobCentre.dx - 0.1),
-              top: s * (NoorTurntable.knobCentre.dy - 0.1),
-              width: s * 0.2,
-              height: s * 0.2,
+              left: s * (NoorTurntable.knobCentre.dx - 0.11),
+              top: s * (NoorTurntable.knobCentre.dy - 0.11),
+              width: s * 0.22,
+              height: s * 0.22,
               child: Semantics(
                 button: true,
                 label: 'Equalizer',
@@ -438,11 +445,8 @@ class _ControlsPainter extends CustomPainter {
           ..shader = const LinearGradient(
                   colors: [Color(0xFFF2F2F2), Color(0xFFCFCFCF)])
               .createShader(cap.outerRect));
-    canvas.drawCircle(
-        Offset(x, capY),
-        s * 0.0045,
-        Paint()
-          ..color = NoorTurntable.volumeDot(volume));
+    canvas.drawCircle(Offset(x, capY), s * 0.0045,
+        Paint()..color = NoorTurntable.volumeDot(volume));
 
     // Knob (the equalizer).
     final k = Offset(
@@ -513,7 +517,8 @@ class _ArmPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final s = size.width;
-    final pivot = Offset(s * 0.84, s * 0.16);
+    final pivot =
+        Offset(s * NoorTurntable.armBase.dx, s * NoorTurntable.armBase.dy);
 
     // Base (does not move).
     canvas.drawCircle(
