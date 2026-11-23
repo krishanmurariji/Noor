@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Noor · Music in a warm light</title>
+  <meta name="description" content="Noor is a music player for Android with a record player you can touch: a turning record, a tone arm, a volume slider and an equalizer knob. Free, no ads, updates itself.">
+  <meta name="theme-color" content="#1F1914">
+  <meta property="og:title" content="Noor · Music in a warm light">
+  <meta property="og:description" content="A music player with a record player you can touch.">
+  <meta property="og:image" content="assets/screens/player.webp">
+  <link rel="icon" href="assets/favicon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Dancing+Script:wght@600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="bar">
+  <a class="brand" href="#top" aria-label="Noor, back to the top">
+    <img src="assets/noor-sun.webp" alt="" width="34" height="34">
+    <span>Noor</span>
+  </a>
+  <nav>
+    <a href="#record">Record player</a>
+    <a href="#sound">Sound</a>
+    <a href="#details">Details</a>
+    <a href="#gestures">Gestures</a>
+    <a class="pill" href="#download">Download</a>
+  </nav>
+</header>
+
+<main id="top">
+
+  <!-- ── 1. Hero: three phones open up in 3D as you scroll ─────────────── -->
+  <section class="scene hero" data-scene data-length="2.2">
+    <div class="sticky">
+      <div class="sun-glow" aria-hidden="true"></div>
+      <div class="vinyl" aria-hidden="true"><div class="label"></div></div>
+
+      <div class="hero-copy" data-layer="copy">
+        <p class="eyebrow">A music player for Android</p>
+        <h1 class="script">Noor</h1>
+        <p class="lede">Music in a warm light. A record player you can touch:<br>the record turns, the arm lowers, the knob shapes the sound.</p>
+        <div class="cta">
+          <a class="button" href="#download" data-download>Download for Android</a>
+          <a class="ghost" href="#record">See it move ↓</a>
+        </div>
+      </div>
+
+      <div class="stage" aria-label="Noor on three phones">
+        <figure class="phone p-left"><img src="assets/screens/home.webp" alt="Noor's home screen: a slider of your lists and the songs in it" loading="eager"></figure>
+        <figure class="phone p-center"><img src="assets/screens/player.webp" alt="Noor's player: a record turning under its tone arm" loading="eager"></figure>
+        <figure class="phone p-right"><img src="assets/screens/details.webp" alt="A song's details: its sleeve, numbers and liner notes" loading="eager"></figure>
+      </div>
+
+      <div class="scroll-hint" aria-hidden="true"><span></span></div>
+    </div>
+  </section>
+
+  <!-- ── 2. The record player ─────────────────────────────────────────── -->
+  <section class="scene split" id="record" data-scene data-length="1.6">
+    <div class="sticky">
+      <div class="copy">
+        <p class="eyebrow">The record player</p>
+        <h2 class="serif">Every song gets<br>its own record.</h2>
+        <ul class="points">
+          <li data-step="0.15"><b>The record turns</b> with the song's artwork as its label. Swipe it to the next song; the arm lifts when you pause.</li>
+          <li data-step="0.35"><b>The slider is your volume.</b> It follows the phone's buttons; drag it, and its dot turns red past 60 %.</li>
+          <li data-step="0.55"><b>The knob is the equalizer.</b> It opens your phone's own sound settings, or Noor's presets where there are none.</li>
+          <li data-step="0.75"><b>Double tap</b> to love a song: a heart springs up. Again, and it cracks and falls.</li>
+        </ul>
+      </div>
+      <div class="visual">
+        <div class="tilt" data-tilt>
+          <figure class="phone big"><img src="assets/screens/player.webp" alt="The record player close up" loading="lazy"></figure>
+          <div class="callout c1" data-step="0.35"><i></i>Volume</div>
+          <div class="callout c2" data-step="0.55"><i></i>Equalizer</div>
+          <div class="callout c3" data-step="0.15"><i></i>Tone arm</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 3. Sound ─────────────────────────────────────────────────────── -->
+  <section class="scene split reverse" id="sound" data-scene data-length="1.5">
+    <div class="sticky">
+      <div class="visual">
+        <div class="layers">
+          <figure class="phone big" data-depth="-60"><img src="assets/screens/sound.webp" alt="Sound settings: Auto, High and Low" loading="lazy"></figure>
+          <div class="chip q-high" data-depth="120">High · 160 kbps</div>
+          <div class="chip q-auto" data-depth="60">Auto → High on Wi-Fi</div>
+          <div class="bars" data-depth="180" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+        </div>
+      </div>
+      <div class="copy">
+        <p class="eyebrow">Sound</p>
+        <h2 class="serif">The best version<br>of every song.</h2>
+        <p>Noor picks the finest stream there is: Opus at about 160 kbps, never the squashed "stable volume" cut. <b>Auto</b> keeps it High on Wi-Fi and good data, and eases off on a slow line.</p>
+        <p>It starts playing while it downloads, keeps a gigabyte of songs for offline, and quietly upgrades older copies to High on Wi-Fi.</p>
+        <dl class="stats">
+          <div><dt>~160<small>kbps</small></dt><dd>Opus, High</dd></div>
+          <div><dt>1<small>GB</small></dt><dd>kept offline</dd></div>
+          <div><dt>0<small>ads</small></dt><dd>ever</dd></div>
+        </dl>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 4. Details ───────────────────────────────────────────────────── -->
+  <section class="scene details" id="details" data-scene data-length="1.4">
+    <div class="sticky">
+      <div class="copy center">
+        <p class="eyebrow">Song details</p>
+        <h2 class="serif">Pull down for the<br>liner notes.</h2>
+        <p>Swipe down on the player: a record sleeve drops in, its record slides out and turns, and the credits follow, the way they read on the back of an album.</p>
+      </div>
+      <div class="deck">
+        <figure class="phone big" data-depth="-40"><img src="assets/screens/details.webp" alt="Song details with liner notes" loading="lazy"></figure>
+        <div class="note n1" data-depth="140"><span>Singer</span><i></i><b>Aanya Rao</b></div>
+        <div class="note n2" data-depth="90"><span>Lyrics</span><i></i><b>Irshad Kamil</b></div>
+        <div class="note n3" data-depth="200"><span>Music</span><i></i><b>Amit Trivedi</b></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 5. Gestures: a turning 3D carousel ───────────────────────────── -->
+  <section class="scene ring-scene" id="gestures" data-scene data-length="2">
+    <div class="sticky">
+      <div class="copy center">
+        <p class="eyebrow">Made for your thumb</p>
+        <h2 class="serif">Hold, swipe, let go.</h2>
+      </div>
+      <div class="ring-wrap">
+        <div class="ring">
+          <figure class="phone r" style="--i:0"><img src="assets/screens/home.webp" alt="Home: hold a card to arrange your lists" loading="lazy"><figcaption>Hold a card, arrange your lists</figcaption></figure>
+          <figure class="phone r" style="--i:1"><img src="assets/screens/actions.webp" alt="Swipe a song left for its actions" loading="lazy"><figcaption>Swipe a song left for like, playlist, remove</figcaption></figure>
+          <figure class="phone r" style="--i:2"><img src="assets/screens/search.webp" alt="Search with official results first" loading="lazy"><figcaption>Official versions first</figcaption></figure>
+          <figure class="phone r" style="--i:3"><img src="assets/screens/player.webp" alt="Swipe the record for the next song" loading="lazy"><figcaption>Swipe the record to change songs</figcaption></figure>
+          <figure class="phone r" style="--i:4"><img src="assets/screens/details.webp" alt="Swipe down for details" loading="lazy"><figcaption>Swipe down for the details</figcaption></figure>
+          <figure class="phone r" style="--i:5"><img src="assets/screens/home-dark.webp" alt="Night mode" loading="lazy"><figcaption>By night: espresso and gold</figcaption></figure>
+        </div>
+        <p class="ring-caption" data-ring-caption aria-hidden="true"></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 6. Earbuds ───────────────────────────────────────────────────── -->
+  <section class="scene buds dark" data-scene data-length="1.3">
+    <div class="sticky">
+      <div class="copy">
+        <p class="eyebrow">Small moments</p>
+        <h2 class="serif">Your buds,<br>greeted.</h2>
+        <p>Connect earbuds and a card rises with them gliding into place under a warm halo. Take them out and they drift apart and fade. Then it's gone, nothing left behind.</p>
+        <p class="muted">Also: "Play my favorites on Noor" with Google Assistant, a Bixby quick command, home-screen shortcuts, and updates that install themselves.</p>
+      </div>
+      <div class="visual">
+        <figure class="phone big" data-depth="-50"><img src="assets/screens/buds.webp" alt="The earbuds card: Galaxy Buds3 Pro connected" loading="lazy"></figure>
+        <div class="halo" data-depth="80" aria-hidden="true"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 7. Day and night ─────────────────────────────────────────────── -->
+  <section class="scene daynight" data-scene data-length="1.4" aria-label="Day and night">
+    <div class="sticky">
+      <div class="half day">
+        <h2 class="serif">Copper by day.</h2>
+        <figure class="phone big"><img src="assets/screens/player.webp" alt="The player by day" loading="lazy"></figure>
+      </div>
+      <div class="half night">
+        <h2 class="serif">Gold by night.</h2>
+        <figure class="phone big"><img src="assets/screens/player-dark.webp" alt="The player by night" loading="lazy"></figure>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 8. Download ──────────────────────────────────────────────────── -->
+  <section class="download" id="download">
+    <h2 class="script">Bring Noor home</h2>
+    <p>Free. No account, no ads. For Android phones.</p>
+    <a class="button big" href="https://github.com/krishanmurariji/Noor/releases" data-download data-label>Download the APK</a>
+    <p class="fine" data-build>Signed, and it keeps itself up to date.</p>
+    <ol class="steps">
+      <li>Download <b>noor.apk</b> on your phone.</li>
+      <li>Open it, and allow your browser to install apps when Android asks.</li>
+      <li>Open Noor. New versions then arrive by themselves on Wi-Fi.</li>
+    </ol>
+  </section>
+</main>
+
+<footer>
+  <img src="assets/noor-sun.webp" alt="" width="28" height="28">
+  <span>Noor · Music in a warm light</span>
+  <a href="https://github.com/krishanmurariji/Noor">Source on GitHub</a>
+</footer>
+
+<script src="main.js" defer></script>
+</body>
+</html>
