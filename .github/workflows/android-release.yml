@@ -12,6 +12,9 @@ on:
   push:
     branches: [master, main, "claude/**"]
     tags: ["v*"]
+    # The website alone is not a new version of the app (phones would
+    # otherwise update to an identical build).
+    paths-ignore: ["website/**", ".github/workflows/pages.yml"]
   workflow_dispatch:
 
 permissions:
