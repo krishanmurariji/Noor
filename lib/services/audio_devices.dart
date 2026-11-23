@@ -5,6 +5,9 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 
 import 'package:flutter/services.dart';
 
+import 'app_log.dart';
+import 'native_ready.dart';
+
 /// Earbuds or headphones connecting / disconnecting.
 class AudioDeviceEvent {
   const AudioDeviceEvent(
@@ -37,8 +40,14 @@ Stream<AudioDeviceEvent> audioDeviceChanges() {
   const channel = EventChannel('noor/audio_devices');
   String? lastKey;
   var lastAt = DateTime.fromMillisecondsSinceEpoch(0);
-  return channel
-      .receiveBroadcastStream()
+  // Only listen once the Android side is there (see nativeReady).
+  Stream<Object?> raw() async* {
+    if (!await nativeReady()) return;
+    nlog('[N] listening for earbuds / headphones');
+    yield* channel.receiveBroadcastStream();
+  }
+
+  return raw()
       .map(AudioDeviceEvent.fromMap)
       .where((e) {
         if (e == null) return false;

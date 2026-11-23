@@ -6,15 +6,21 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'native_ready.dart';
+
 /// The phone's media volume, 0–1: follows the volume buttons, and can be
 /// set from Noor's volume bar. Null where it cannot be read (tests, other
 /// platforms).
 class PhoneVolumeNotifier extends StateNotifier<double?> {
   PhoneVolumeNotifier() : super(null) {
     if (kIsWeb || !Platform.isAndroid) return; // only Android reports it
-    _sub = _changes.receiveBroadcastStream().listen((v) {
-      if (v is num && mounted && !_dragging) state = v.toDouble();
-    }, onError: (Object _) {});
+    // Only listen once the Android side is there (see nativeReady).
+    nativeReady().then((ok) {
+      if (!ok || !mounted) return;
+      _sub = _changes.receiveBroadcastStream().listen((v) {
+        if (v is num && mounted && !_dragging) state = v.toDouble();
+      }, onError: (Object _) {});
+    });
   }
 
   static const _channel = MethodChannel('noor/volume');

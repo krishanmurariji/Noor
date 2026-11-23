@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_log.dart';
 import 'audio_handler.dart';
+import 'native_ready.dart';
 
 /// Settings key: start playing as soon as Noor opens (for a Bixby quick
 /// command such as "Noor" → "Open Noor", or Gemini's "open Noor").
@@ -71,6 +72,7 @@ class LaunchRequests {
     });
 
     String? asked;
+    await nativeReady(patience: const Duration(seconds: 10));
     try {
       nlog('[N] opened: ${await channel.invokeMethod<String>('how')}');
       asked = await channel.invokeMethod<String>('take');
