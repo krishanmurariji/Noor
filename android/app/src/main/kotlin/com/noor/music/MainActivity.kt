@@ -5,6 +5,8 @@ import android.content.BroadcastReceiver
 import android.content.ContentUris
 import android.content.Context
 import android.content.IntentFilter
+import android.media.AudioDeviceCallback
+import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
@@ -186,6 +188,50 @@ class MainActivity : AudioServiceActivity() {
                 override fun onCancel(arguments: Any?) {
                     receiver?.let { try { app.unregisterReceiver(it) } catch (_: Exception) {} }
                     receiver = null
+                }
+            })
+
+        // Earbuds / headphones connecting and disconnecting, for the
+        // animation. The devices already connected when listening starts are
+        // reported once by Android; those are skipped (only changes count).
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, "noor/audio_devices")
+            .setStreamHandler(object : EventChannel.StreamHandler {
+                private var callback: AudioDeviceCallback? = null
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink) {
+                    var primed = false
+                    fun send(devices: Array<out AudioDeviceInfo>, event: String) {
+                        val seen = HashSet<String>()
+                        for (d in devices) {
+                            if (!d.isSink) continue
+                            val kind = when (d.type) {
+                                AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+                                26 /* TYPE_BLE_HEADSET */,
+                                23 /* TYPE_HEARING_AID */ -> "buds"
+                                AudioDeviceInfo.TYPE_WIRED_HEADSET,
+                                AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+                                22 /* TYPE_USB_HEADSET */ -> "wired"
+                                else -> null
+                            } ?: continue
+                            val name = d.productName?.toString()?.trim().orEmpty()
+                            if (!seen.add(name + kind)) continue
+                            events.success(mapOf("event" to event, "name" to name, "kind" to kind))
+                        }
+                    }
+                    val c = object : AudioDeviceCallback() {
+                        override fun onAudioDevicesAdded(added: Array<out AudioDeviceInfo>) {
+                            if (!primed) { primed = true; return }
+                            send(added, "connected")
+                        }
+                        override fun onAudioDevicesRemoved(removed: Array<out AudioDeviceInfo>) {
+                            send(removed, "disconnected")
+                        }
+                    }
+                    audio.registerAudioDeviceCallback(c, main)
+                    callback = c
+                }
+                override fun onCancel(arguments: Any?) {
+                    callback?.let { try { audio.unregisterAudioDeviceCallback(it) } catch (_: Exception) {} }
+                    callback = null
                 }
             })
 

@@ -30,7 +30,11 @@ import 'playback_log_screen.dart';
 ///  * Help: the playback log.
 ///  * About: the logo, the real version of this build, the developer.
 class SettingsScreen extends ConsumerWidget {
-  const SettingsScreen({super.key});
+  const SettingsScreen({super.key, this.soundOnly = false});
+
+  /// Opened from the player: only what concerns the song playing (quality
+  /// and equalizer). From Home: everything.
+  final bool soundOnly;
 
   Future<void> _open(BuildContext context, String url) async {
     if (!await launchUrl(Uri.parse(url),
@@ -157,7 +161,7 @@ class SettingsScreen extends ConsumerWidget {
                   ),
                   const SizedBox(width: 14),
                   Expanded(
-                      child: Text('Settings',
+                      child: Text(soundOnly ? 'Sound' : 'Settings',
                           style: noorSongTitleStyle(t.ac, size: 32))),
                   const NoorLogo(),
                 ]),
@@ -165,7 +169,7 @@ class SettingsScreen extends ConsumerWidget {
               const SizedBox(height: 26),
 
               // ── Sound ────────────────────────────────────────────────────
-              const _Section('Sound'),
+              if (!soundOnly) const _Section('Sound'),
               _Card(children: [
                 for (final q in SoundQuality.values)
                   _Row(
@@ -191,172 +195,176 @@ class SettingsScreen extends ConsumerWidget {
               ]),
               const SizedBox(height: 26),
 
-              // ── Gestures ─────────────────────────────────────────────────
-              const _Section('Gestures'),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(6, 0, 6, 10),
-                child: Text(
-                    'Turn off any swipe you keep doing by accident. Each one has a button or tap that does the same.',
-                    textAlign: TextAlign.center,
-                    style:
-                        TextStyle(color: t.mute, fontSize: 12.5, height: 1.35)),
-              ),
-              _Card(children: [
-                for (final g in NoorGesture.values)
+              if (!soundOnly) ...[
+                // ── Gestures ─────────────────────────────────────────────────
+                const _Section('Gestures'),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(6, 0, 6, 10),
+                  child: Text(
+                      'Turn off any swipe you keep doing by accident. Each one has a button or tap that does the same.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                          color: t.mute, fontSize: 12.5, height: 1.35)),
+                ),
+                _Card(children: [
+                  for (final g in NoorGesture.values)
+                    _Row(
+                      icon: switch (g) {
+                        NoorGesture.bottomCardSwipe => Icons.swap_horiz_rounded,
+                        NoorGesture.bottomCardSwipeUp => Icons.north_rounded,
+                        NoorGesture.homeSwipeDownSearch => Icons.south_rounded,
+                        NoorGesture.playerRecordSwipe => Icons.album_outlined,
+                        NoorGesture.songCardSwipe => Icons.west_rounded,
+                      },
+                      title: g.title,
+                      subtitle: g.subtitle,
+                      trailing: NoorToggle(
+                        value: on.contains(g),
+                        label: g.title,
+                        onChanged: (v) => ref
+                            .read(gestureSettingsProvider.notifier)
+                            .set(g, v),
+                      ),
+                      onTap: () => ref
+                          .read(gestureSettingsProvider.notifier)
+                          .set(g, !on.contains(g)),
+                    ),
+                ]),
+                const SizedBox(height: 26),
+
+                // ── Voice & start ────────────────────────────────────────────
+                const _Section('Voice & start'),
+                _Card(children: [
                   _Row(
-                    icon: switch (g) {
-                      NoorGesture.bottomCardSwipe => Icons.swap_horiz_rounded,
-                      NoorGesture.bottomCardSwipeUp => Icons.north_rounded,
-                      NoorGesture.homeSwipeDownSearch => Icons.south_rounded,
-                      NoorGesture.playerRecordSwipe => Icons.album_outlined,
-                      NoorGesture.songCardSwipe => Icons.west_rounded,
-                    },
-                    title: g.title,
-                    subtitle: g.subtitle,
+                    icon: Icons.play_circle_outline_rounded,
+                    title: 'Play when Noor opens',
+                    subtitle:
+                        'Carry on with the last song as soon as Noor starts',
                     trailing: NoorToggle(
-                      value: on.contains(g),
-                      label: g.title,
+                      value: ref.watch(playOnOpenProvider),
+                      label: 'Play when Noor opens',
                       onChanged: (v) =>
-                          ref.read(gestureSettingsProvider.notifier).set(g, v),
+                          ref.read(playOnOpenProvider.notifier).set(v),
                     ),
                     onTap: () => ref
-                        .read(gestureSettingsProvider.notifier)
-                        .set(g, !on.contains(g)),
+                        .read(playOnOpenProvider.notifier)
+                        .set(!ref.read(playOnOpenProvider)),
                   ),
-              ]),
-              const SizedBox(height: 26),
-
-              // ── Voice & start ────────────────────────────────────────────
-              const _Section('Voice & start'),
-              _Card(children: [
-                _Row(
-                  icon: Icons.play_circle_outline_rounded,
-                  title: 'Play when Noor opens',
-                  subtitle:
-                      'Carry on with the last song as soon as Noor starts',
-                  trailing: NoorToggle(
-                    value: ref.watch(playOnOpenProvider),
-                    label: 'Play when Noor opens',
-                    onChanged: (v) =>
-                        ref.read(playOnOpenProvider.notifier).set(v),
+                  _Row(
+                    icon: Icons.mic_none_rounded,
+                    title: 'Voice commands',
+                    subtitle: 'Google Assistant, Gemini and Bixby',
+                    onTap: () => _voiceHelp(context),
                   ),
-                  onTap: () => ref
-                      .read(playOnOpenProvider.notifier)
-                      .set(!ref.read(playOnOpenProvider)),
-                ),
-                _Row(
-                  icon: Icons.mic_none_rounded,
-                  title: 'Voice commands',
-                  subtitle: 'Google Assistant, Gemini and Bixby',
-                  onTap: () => _voiceHelp(context),
-                ),
-              ]),
-              const SizedBox(height: 26),
+                ]),
+                const SizedBox(height: 26),
 
-              // ── Library ──────────────────────────────────────────────────
-              const _Section('Library'),
-              _Card(children: [
-                _Row(
-                  icon: Icons.history_rounded,
-                  title: 'Clear history',
-                  subtitle: 'Empty My History',
-                  onTap: () => _clearHistory(context, ref),
-                ),
-                _Row(
-                  icon: Icons.shield_outlined,
-                  title: 'Backup sources',
-                  subtitle: 'Your own servers, used if YouTube fails',
-                  onTap: () => showBackupSourcesDialog(context),
-                ),
-              ]),
-              const SizedBox(height: 26),
+                // ── Library ──────────────────────────────────────────────────
+                const _Section('Library'),
+                _Card(children: [
+                  _Row(
+                    icon: Icons.history_rounded,
+                    title: 'Clear history',
+                    subtitle: 'Empty My History',
+                    onTap: () => _clearHistory(context, ref),
+                  ),
+                  _Row(
+                    icon: Icons.shield_outlined,
+                    title: 'Backup sources',
+                    subtitle: 'Your own servers, used if YouTube fails',
+                    onTap: () => showBackupSourcesDialog(context),
+                  ),
+                ]),
+                const SizedBox(height: 26),
 
-              // ── Help ─────────────────────────────────────────────────────
-              const _Section('Help'),
-              _Card(children: [
-                _Row(
-                  icon: Icons.receipt_long_outlined,
-                  title: 'Playback log',
-                  subtitle:
-                      'What the player did, to share when something fails',
-                  onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) => const PlaybackLogScreen())),
-                ),
-              ]),
-              const SizedBox(height: 26),
+                // ── Help ─────────────────────────────────────────────────────
+                const _Section('Help'),
+                _Card(children: [
+                  _Row(
+                    icon: Icons.receipt_long_outlined,
+                    title: 'Playback log',
+                    subtitle:
+                        'What the player did, to share when something fails',
+                    onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const PlaybackLogScreen())),
+                  ),
+                ]),
+                const SizedBox(height: 26),
 
-              // ── About ────────────────────────────────────────────────────
-              const _Section('About'),
-              _Card(
-                padding: const EdgeInsets.fromLTRB(20, 22, 20, 20),
-                children: [
-                  Column(children: [
-                    const NoorLogo(size: 84),
-                    const SizedBox(height: 8),
-                    Text('Noor', style: noorSongTitleStyle(t.ac, size: 34)),
-                    const SizedBox(height: 2),
-                    Text('Music in a warm light',
-                        style: TextStyle(color: t.mute, fontSize: 12.5)),
-                    const SizedBox(height: 10),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 5),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: t.soft, width: 0.8),
-                      ),
-                      child: Text(AppVersion.label,
-                          key: const ValueKey('app-version'),
-                          style: TextStyle(
-                              color: t.ac,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600)),
-                    ),
-                    const SizedBox(height: 20),
-                    Divider(color: t.faint, height: 1),
-                    const SizedBox(height: 18),
-                    Row(children: [
+                // ── About ────────────────────────────────────────────────────
+                const _Section('About'),
+                _Card(
+                  padding: const EdgeInsets.fromLTRB(20, 22, 20, 20),
+                  children: [
+                    Column(children: [
+                      const NoorLogo(size: 84),
+                      const SizedBox(height: 8),
+                      Text('Noor', style: noorSongTitleStyle(t.ac, size: 34)),
+                      const SizedBox(height: 2),
+                      Text('Music in a warm light',
+                          style: TextStyle(color: t.mute, fontSize: 12.5)),
+                      const SizedBox(height: 10),
                       Container(
-                        padding: const EdgeInsets.all(2),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 5),
                         decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(color: t.ac, width: 0.8)),
-                        child: CircleAvatar(
-                          radius: 24,
-                          backgroundColor: t.wash,
-                          backgroundImage: const CachedNetworkImageProvider(
-                              'https://avatars.githubusercontent.com/Krishan-Vineforce?size=200'),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: t.soft, width: 0.8),
                         ),
+                        child: Text(AppVersion.label,
+                            key: const ValueKey('app-version'),
+                            style: TextStyle(
+                                color: t.ac,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600)),
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('Krishan Murari',
-                                style: noorSongTitleStyle(t.ac, size: 21)),
-                            Text('Made Noor',
-                                style: TextStyle(color: t.mute, fontSize: 12)),
-                          ],
+                      const SizedBox(height: 20),
+                      Divider(color: t.faint, height: 1),
+                      const SizedBox(height: 18),
+                      Row(children: [
+                        Container(
+                          padding: const EdgeInsets.all(2),
+                          decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(color: t.ac, width: 0.8)),
+                          child: CircleAvatar(
+                            radius: 24,
+                            backgroundColor: t.wash,
+                            backgroundImage: const CachedNetworkImageProvider(
+                                'https://avatars.githubusercontent.com/Krishan-Vineforce?size=200'),
+                          ),
                         ),
-                      ),
-                      _LinkButton(
-                          icon: FontAwesomeIcons.linkedinIn,
-                          label: 'LinkedIn',
-                          onTap: () => _open(context,
-                              'https://www.linkedin.com/in/krishan-murari/')),
-                      const SizedBox(width: 8),
-                      _LinkButton(
-                          icon: FontAwesomeIcons.github,
-                          label: 'GitHub',
-                          onTap: () => _open(
-                              context, 'https://github.com/krishanmurariji')),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Krishan Murari',
+                                  style: noorSongTitleStyle(t.ac, size: 21)),
+                              Text('Made Noor',
+                                  style:
+                                      TextStyle(color: t.mute, fontSize: 12)),
+                            ],
+                          ),
+                        ),
+                        _LinkButton(
+                            icon: FontAwesomeIcons.linkedinIn,
+                            label: 'LinkedIn',
+                            onTap: () => _open(context,
+                                'https://www.linkedin.com/in/krishan-murari/')),
+                        const SizedBox(width: 8),
+                        _LinkButton(
+                            icon: FontAwesomeIcons.github,
+                            label: 'GitHub',
+                            onTap: () => _open(
+                                context, 'https://github.com/krishanmurariji')),
+                      ]),
                     ]),
-                  ]),
-                ],
-              ),
+                  ],
+                ),
+              ],
             ],
           ),
           const Positioned(left: 0, right: 0, bottom: 0, child: MiniPlayer()),

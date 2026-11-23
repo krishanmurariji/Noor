@@ -473,7 +473,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                         NoorSettingsButton(
                             onTap: () => Navigator.of(context).push(
                                 MaterialPageRoute(
-                                    builder: (_) => const SettingsScreen()))),
+                                    builder: (_) => const SettingsScreen(
+                                        soundOnly: true)))),
                       ]),
                     ),
                   ),

@@ -123,21 +123,14 @@ class _SearchSuggestionsState extends ConsumerState<SearchSuggestions> {
           if (!s.recent) return line;
           return Dismissible(
             key: ValueKey('recent_${s.text}'),
+            // Only a swipe to the right removes it.
+            direction: DismissDirection.startToEnd,
             onDismissed: (_) {
               HapticFeedback.lightImpact();
               ref.read(searchHistoryProvider.notifier).remove(s.text);
             },
             background: Container(
-              alignment: Alignment.centerRight,
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Text('Remove',
-                  style: TextStyle(
-                      color: t.mute,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600)),
-            ),
-            secondaryBackground: Container(
-              alignment: Alignment.centerRight,
+              alignment: Alignment.centerLeft,
               padding: const EdgeInsets.symmetric(horizontal: 24),
               child: Text('Remove',
                   style: TextStyle(

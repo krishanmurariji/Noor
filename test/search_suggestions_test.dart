@@ -204,7 +204,11 @@ void main() {
 
     testWidgets('swiping a recent search away forgets it', (t) async {
       await openSearch(t, recent: ['tum hi ho', 'kesariya']);
+      // A swipe to the left does nothing; only left → right removes it.
       await t.drag(find.text('tum hi ho'), const Offset(-400, 0));
+      await t.pumpAndSettle();
+      expect(find.text('tum hi ho'), findsOneWidget);
+      await t.drag(find.text('tum hi ho'), const Offset(400, 0));
       await settle(t);
       expect(find.text('tum hi ho'), findsNothing);
       expect(container.read(searchHistoryProvider), ['kesariya']);

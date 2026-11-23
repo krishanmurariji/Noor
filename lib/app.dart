@@ -1,5 +1,7 @@
 import 'dart:math' as math;
 import 'widgets/noor_toast.dart';
+import 'widgets/buds_popup.dart';
+import 'services/audio_devices.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -15,6 +17,10 @@ import 'screens/main_shell.dart';
 final GlobalKey<ScaffoldMessengerState> _messengerKey =
     GlobalKey<ScaffoldMessengerState>();
 final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
+
+/// Earbuds / headphones connecting or disconnecting (none in tests).
+final audioDeviceChangesProvider =
+    StreamProvider<AudioDeviceEvent>((ref) => audioDeviceChanges());
 
 class NebulaApp extends ConsumerWidget {
   const NebulaApp({super.key});
@@ -33,6 +39,17 @@ class NebulaApp extends ConsumerWidget {
       if (n == null) return;
       final overlay = _navigatorKey.currentState?.overlay;
       if (overlay != null) NoorToast.showIn(overlay, n);
+    });
+    // Earbuds connected / disconnected while Noor is on screen: the card.
+    ref.listen<AsyncValue<AudioDeviceEvent>>(audioDeviceChangesProvider,
+        (_, next) {
+      final e = next.valueOrNull;
+      if (e == null) return;
+      if (WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) {
+        return;
+      }
+      final overlay = _navigatorKey.currentState?.overlay;
+      if (overlay != null) BudsPopup.showIn(overlay, e);
     });
     return MaterialApp(
       title: 'Noor',

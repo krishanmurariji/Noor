@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 import 'dart:math' as math;
 import '../providers/gesture_settings_provider.dart';
@@ -81,6 +82,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
 
   @override
   void dispose() {
+    _edgeTimer?.cancel();
+    _sliderScroll.dispose();
     _binDrop.dispose();
     _vortex.dispose();
     _query.dispose();
@@ -216,8 +219,66 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     });
   }
 
+  // ── Scrolling the slider while a card is held ──────────────────────────
+  // Held near either edge of the slider, the row scrolls on by itself (faster
+  // the closer to the edge) until its end, and the held card keeps taking the
+  // place under the finger.
+  final ScrollController _sliderScroll = ScrollController();
+  final GlobalKey _sliderKey = GlobalKey();
+  final Map<String, GlobalKey> _cardKeys = {};
+  Offset? _dragAt;
+  Timer? _edgeTimer;
+
+  void _dragMoved(Offset global) {
+    _dragAt = global;
+    _edgeTimer ??=
+        Timer.periodic(const Duration(milliseconds: 16), (_) => _edgeTick());
+  }
+
+  void _edgeTick() {
+    final at = _dragAt;
+    final box = _sliderKey.currentContext?.findRenderObject() as RenderBox?;
+    if (at == null || box == null || !_sliderScroll.hasClients) return;
+    final rect = box.localToGlobal(Offset.zero) & box.size;
+    // Only while the finger is on the slider (not up at the wormhole).
+    if (at.dy < rect.top - 30 || at.dy > rect.bottom + 30) return;
+    const edge = 64.0, fastest = 14.0;
+    var step = 0.0;
+    if (at.dx < rect.left + edge) {
+      step = -fastest * (1 - ((at.dx - rect.left) / edge).clamp(0.0, 1.0));
+    } else if (at.dx > rect.right - edge) {
+      step = fastest * (1 - ((rect.right - at.dx) / edge).clamp(0.0, 1.0));
+    }
+    if (step == 0) return;
+    final pos = _sliderScroll.position;
+    final next =
+        (pos.pixels + step).clamp(pos.minScrollExtent, pos.maxScrollExtent);
+    if (next == pos.pixels) return;
+    _sliderScroll.jumpTo(next);
+    // The cards moved under a still finger: take the place under it.
+    final held = _draggingId;
+    if (held == null) return;
+    for (final e in _cardKeys.entries) {
+      if (e.key == held) continue;
+      final b = e.value.currentContext?.findRenderObject() as RenderBox?;
+      if (b == null || !b.hasSize) continue;
+      final r = b.localToGlobal(Offset.zero) & b.size;
+      if (at.dx >= r.left && at.dx <= r.right) {
+        _moveCard(held, e.key);
+        break;
+      }
+    }
+  }
+
+  void _stopEdgeScroll() {
+    _edgeTimer?.cancel();
+    _edgeTimer = null;
+    _dragAt = null;
+  }
+
   /// Letting go ends arranging (no Done button): the order is kept.
   void _dragEnded() {
+    _stopEdgeScroll();
     ref.read(homeOrderProvider.notifier).set(_arrangeOrder);
     if (_falling != null) {
       setState(() => _draggingId = null); // the wormhole finishes first
@@ -451,7 +512,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
             : const SizedBox.shrink(),
       );
       return DragTarget<String>(
-        key: ValueKey('slide_${c.id}'),
+        key: _cardKeys.putIfAbsent(c.id, () => GlobalKey()),
         onWillAcceptWithDetails: (d) {
           if (!_arranging || d.data == c.id) return false;
           _moveCard(d.data, c.id);
@@ -468,6 +529,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
             if (!_arranging) _startArranging(cats, c.id);
             setState(() => _draggingId = c.id);
           },
+          onDragUpdate: (d) => _dragMoved(d.globalPosition),
           onDragEnd: (_) => _dragEnded(),
           onDraggableCanceled: (_, __) => _dragEnded(),
           feedback: Material(
@@ -500,6 +562,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
+            key: _sliderKey,
             height: 168,
             child: GestureDetector(
               onHorizontalDragEnd: _arranging
@@ -519,6 +582,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                     },
               child: LayoutBuilder(
                 builder: (context, box) => SingleChildScrollView(
+                  controller: _sliderScroll,
                   scrollDirection: Axis.horizontal,
                   physics: _arranging
                       ? const BouncingScrollPhysics()
@@ -567,6 +631,94 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
         ],
       ),
     );
+  }
+
+  /// The songs of the card in front. Hold a song and drag to move it
+  /// (My History, My Favorites and playlists); swipe left for its actions.
+  Widget _songList(BuildContext context, NoorTheme t, NebulaPlayerState ps,
+      HomeCategory current, bool askPhone) {
+    final movable = current.id != 'music'; // the phone's own order
+    final lead = askPhone ? 1 : 0;
+    return ReorderableListView.builder(
+      // Room for the keyboard, so a card being named can scroll above it.
+      padding: EdgeInsets.fromLTRB(
+          0, 4, 0, 120 + MediaQuery.viewInsetsOf(context).bottom),
+      // Always pullable, even when the list is short.
+      physics:
+          const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+      buildDefaultDragHandles: false,
+      itemCount: current.songs.length + lead,
+      onReorder: (from, to) =>
+          _moveSong(current, from - lead, (to - lead).clamp(0, 1 << 30)),
+      proxyDecorator: (child, _, anim) => AnimatedBuilder(
+        animation: anim,
+        builder: (_, c) => Transform.scale(
+          scale: 1 + 0.04 * Curves.easeOut.transform(anim.value),
+          child: Material(
+            color: Colors.transparent,
+            elevation: 6 * anim.value,
+            shadowColor: t.ac.withOpacity(0.35),
+            borderRadius: BorderRadius.circular(kNoorCardRadius),
+            child: c,
+          ),
+        ),
+      ),
+      itemBuilder: (context, i) {
+        if (askPhone && i == 0) {
+          return const KeyedSubtree(
+              key: ValueKey('phone-access'), child: _PhoneAccessPill());
+        }
+        final index = i - lead;
+        final song = current.songs[index];
+        final targetId = ps.pendingSong?.videoId ?? ps.song?.videoId;
+        final isCurrent = song.videoId == targetId;
+        final loading = isCurrent &&
+            (ps.status == NebulaPlayerStatus.loading ||
+                (ps.pendingSong != null &&
+                    ps.status != NebulaPlayerStatus.playing &&
+                    ps.status != NebulaPlayerStatus.paused));
+        final row = NoorSongRow(
+          song: song,
+          current: isCurrent,
+          playing: isCurrent && ps.status == NebulaPlayerStatus.playing,
+          loading: loading,
+          holdForActions: !movable,
+          onTap: () => _play(song, current.songs),
+          onPlayPause: () => _play(song, current.songs),
+        );
+        final key = ValueKey('${current.id}_${song.videoId}');
+        if (!movable) return KeyedSubtree(key: key, child: row);
+        return ReorderableDelayedDragStartListener(
+            key: key, index: i, child: row);
+      },
+    );
+  }
+
+  /// Moves a song within the card's list, and keeps the playing queue in
+  /// step when it is that list.
+  Future<void> _moveSong(HomeCategory c, int from, int to) async {
+    if (to > from) to -= 1;
+    if (from == to || from < 0 || from >= c.songs.length) return;
+    HapticFeedback.selectionClick();
+    final id = c.songs[from].videoId;
+    switch (c.id) {
+      case 'hist':
+        await ref.read(historyProvider.notifier).move(id, to);
+      case 'fav':
+        await ref.read(likedProvider.notifier).move(id, to);
+      case 'music':
+        return;
+      default:
+        await ref.read(playlistProvider.notifier).moveSong(c.id, id, to);
+    }
+    final queue = ref.read(playerProvider).queue;
+    final ids = {for (final s in c.songs) s.videoId};
+    if (queue.length == c.songs.length &&
+        queue.every((s) => ids.contains(s.videoId))) {
+      await ref
+          .read(playerProvider.notifier)
+          .setQueueOrder(moveSongInList(c.songs, id, to));
+    }
   }
 
   void _play(Song song, List<Song> queue) {
@@ -785,75 +937,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                                                     ScrollNotification>(
                                                     onNotification:
                                                         _onListScroll,
-                                                    child: ListView.builder(
-                                                      // Room for the keyboard, so a card being
-                                                      // named can scroll above it.
-                                                      padding: EdgeInsets.fromLTRB(
-                                                          0,
-                                                          4,
-                                                          0,
-                                                          120 +
-                                                              MediaQuery.viewInsetsOf(
-                                                                      context)
-                                                                  .bottom),
-                                                      // Always pullable, even when the list is short.
-                                                      physics:
-                                                          const AlwaysScrollableScrollPhysics(
-                                                              parent:
-                                                                  BouncingScrollPhysics()),
-                                                      itemCount: current
-                                                              .songs.length +
-                                                          (askPhone ? 1 : 0),
-                                                      itemBuilder:
-                                                          (context, i) {
-                                                        if (askPhone) {
-                                                          if (i == 0) {
-                                                            return const _PhoneAccessPill();
-                                                          }
-                                                          i -= 1;
-                                                        }
-                                                        final song =
-                                                            current.songs[i];
-                                                        final targetId = ps
-                                                                .pendingSong
-                                                                ?.videoId ??
-                                                            ps.song?.videoId;
-                                                        final isCurrent =
-                                                            song.videoId ==
-                                                                targetId;
-                                                        final loading = isCurrent &&
-                                                            (ps.status ==
-                                                                    NebulaPlayerStatus
-                                                                        .loading ||
-                                                                (ps.pendingSong !=
-                                                                        null &&
-                                                                    ps.status !=
-                                                                        NebulaPlayerStatus
-                                                                            .playing &&
-                                                                    ps.status !=
-                                                                        NebulaPlayerStatus
-                                                                            .paused));
-                                                        return NoorSongRow(
-                                                          key: ValueKey(
-                                                              '${current.id}_${song.videoId}'),
-                                                          song: song,
-                                                          current: isCurrent,
-                                                          playing: isCurrent &&
-                                                              ps.status ==
-                                                                  NebulaPlayerStatus
-                                                                      .playing,
-                                                          loading: loading,
-                                                          onTap: () => _play(
-                                                              song,
-                                                              current.songs),
-                                                          onPlayPause: () =>
-                                                              _play(
-                                                                  song,
-                                                                  current
-                                                                      .songs),
-                                                        );
-                                                      },
-                                                    ),
+                                                    child: _songList(context, t,
+                                                        ps, current, askPhone),
                                                   ),
                                       ),
                                     ),
