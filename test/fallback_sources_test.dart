@@ -24,18 +24,18 @@ const _invidious = {
 
 void main() {
   group('parsers', () {
-    test('Piped: lowest-bitrate mp4 audio, ignores video-only', () {
+    test('Piped: the best version, ignores video-only', () {
       final c = parsePipedStreams(_piped)!;
-      expect(c.url, 'https://p.example/lo');
+      expect(c.url, 'https://p.example/hi');
       expect(c.mimeType, 'audio/mp4');
-      expect(c.size, 1800000);
+      expect(c.size, 5000000);
     });
 
     test('Invidious: audio only, codecs stripped, string numbers parsed', () {
       final c = parseInvidiousVideo(_invidious)!;
-      expect(c.url, 'https://i.example/a1');
+      expect(c.url, 'https://i.example/a2');
       expect(c.mimeType, 'audio/mp4');
-      expect(c.size, 1700000);
+      expect(c.size, 4000000);
     });
 
     test('garbage input gives null instead of throwing', () {
@@ -65,8 +65,8 @@ void main() {
       }, ['https://pipe.example/']);
       final r = await f.fetch('abc');
       expect(r, isNotNull);
-      expect(r!.url.toString(), 'https://p.example/lo');
-      expect(r.totalBytes, 1800000);
+      expect(r!.url.toString(), 'https://p.example/hi');
+      expect(r.totalBytes, 5000000);
       expect(r.origin, 'pipe.example');
     });
 
@@ -79,7 +79,7 @@ void main() {
         return http.Response('not found', 404);
       }, ['https://inv.example']);
       final r = await f.fetch('abc');
-      expect(r!.url.toString(), 'https://i.example/a1');
+      expect(r!.url.toString(), 'https://i.example/a2');
     });
 
     test('a dead instance is skipped, next one is used, dead one is not retried soon', () async {

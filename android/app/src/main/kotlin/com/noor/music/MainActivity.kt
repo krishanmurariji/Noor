@@ -1,7 +1,13 @@
 package com.noor.music
 
 import android.app.SearchManager
+import android.content.BroadcastReceiver
 import android.content.ContentUris
+import android.content.Context
+import android.content.IntentFilter
+import android.media.AudioManager
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.content.Intent
 import android.os.Bundle
 import android.graphics.Bitmap
@@ -13,6 +19,7 @@ import android.provider.MediaStore
 import android.util.Size
 import com.ryanheise.audioservice.AudioServiceActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.Executors
@@ -115,6 +122,73 @@ class MainActivity : AudioServiceActivity() {
                 }
             }
         }
+        val app = applicationContext
+        // Network, for the "Auto" song quality: Wi-Fi (not metered) and
+        // Android's Data Saver.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "noor/network")
+            .setMethodCallHandler { call, result ->
+                if (call.method != "info") { result.notImplemented(); return@setMethodCallHandler }
+                try {
+                    val cm = app.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+                    val caps = cm.getNetworkCapabilities(cm.activeNetwork)
+                    val unmetered = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED) == true
+                    val wifi = caps != null && unmetered &&
+                        (caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+                            caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET))
+                    val saver = Build.VERSION.SDK_INT >= Build.VERSION_CODES.N &&
+                        cm.restrictBackgroundStatus == ConnectivityManager.RESTRICT_BACKGROUND_STATUS_ENABLED
+                    result.success(mapOf("wifi" to wifi, "saver" to saver, "online" to (caps != null)))
+                } catch (e: Exception) {
+                    result.success(mapOf("wifi" to false, "saver" to false))
+                }
+            }
+
+        // The phone's media volume, for the volume bar on the record player:
+        // read it, set it, and follow changes made with the volume buttons.
+        val audio = app.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        fun volume(): Double {
+            val max = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+            return if (max <= 0) 0.0 else audio.getStreamVolume(AudioManager.STREAM_MUSIC).toDouble() / max
+        }
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "noor/volume")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "get" -> result.success(volume())
+                    "set" -> {
+                        val v = (call.argument<Number>("value"))?.toDouble() ?: 0.0
+                        val max = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                        val step = Math.round(v.coerceIn(0.0, 1.0) * max).toInt()
+                        try { audio.setStreamVolume(AudioManager.STREAM_MUSIC, step, 0) } catch (_: Exception) {}
+                        result.success(volume())
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, "noor/volume/changes")
+            .setStreamHandler(object : EventChannel.StreamHandler {
+                private var receiver: BroadcastReceiver? = null
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink) {
+                    val r = object : BroadcastReceiver() {
+                        override fun onReceive(c: Context?, i: Intent?) {
+                            val stream = i?.getIntExtra("android.media.EXTRA_VOLUME_STREAM_TYPE", -1)
+                            if (stream == AudioManager.STREAM_MUSIC) events.success(volume())
+                        }
+                    }
+                    val filter = IntentFilter("android.media.VOLUME_CHANGED_ACTION")
+                    if (Build.VERSION.SDK_INT >= 33) {
+                        app.registerReceiver(r, filter, Context.RECEIVER_EXPORTED)
+                    } else {
+                        app.registerReceiver(r, filter)
+                    }
+                    receiver = r
+                    events.success(volume())
+                }
+                override fun onCancel(arguments: Any?) {
+                    receiver?.let { try { app.unregisterReceiver(it) } catch (_: Exception) {} }
+                    receiver = null
+                }
+            })
+
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "noor/local_music")
             .setMethodCallHandler { call, result ->
                 when (call.method) {

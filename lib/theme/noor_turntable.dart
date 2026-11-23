@@ -13,6 +13,11 @@ import 'noor_artwork.dart';
 ///   (used when one record is swapped for the next);
 /// * [incomingArtUrl] / [incomingShift]: a second record (not turning) at
 ///   that shift, the one sliding in while the record is swiped.
+/// * [volume]: the phone's volume (0–1) shown by the slider on the right;
+///   its dot is blue up to 60 % and red above. Drag the slider (or tap
+///   along it) to change the volume ([onVolume], [onVolumeHold]).
+/// * The knob opens the equalizer ([onKnob]); [knobTurn] (0–1) is where
+///   it points and [eqOn] lights its little lamp.
 class NoorTurntable extends StatefulWidget {
   const NoorTurntable({
     super.key,
@@ -23,7 +28,35 @@ class NoorTurntable extends StatefulWidget {
     this.discShift = 0,
     this.incomingArtUrl,
     this.incomingShift = 0,
+    this.volume,
+    this.onVolume,
+    this.onVolumeHold,
+    this.onKnob,
+    this.knobTurn = 0,
+    this.eqOn = false,
   });
+
+  final double? volume;
+  final ValueChanged<double>? onVolume;
+  final ValueChanged<bool>? onVolumeHold;
+  final VoidCallback? onKnob;
+  final double knobTurn;
+  final bool eqOn;
+
+  /// The volume slider's track, as fractions of the size.
+  static const double sliderX = 0.875, sliderTop = 0.42, sliderBottom = 0.60;
+
+  /// The knob's centre and radius, as fractions of the size.
+  static const Offset knobCentre = Offset(0.84, 0.80);
+  static const double knobRadius = 0.075;
+
+  /// The volume slider's dot: blue up to 60 %, red above.
+  static Color volumeDot(double v) =>
+      v > 0.6 + 1e-9 ? const Color(0xFFD2412F) : const Color(0xFF3D7BE0);
+
+  /// The volume for a touch at [y] (a fraction of the size): top = loudest.
+  static double volumeAt(double y) =>
+      ((sliderBottom - y) / (sliderBottom - sliderTop)).clamp(0.0, 1.0);
 
   final String? incomingArtUrl;
   final double incomingShift;
@@ -107,7 +140,21 @@ class _NoorTurntableState extends State<NoorTurntable>
               ),
             ),
           ),
-          Positioned.fill(child: CustomPaint(painter: _ControlsPainter())),
+          Positioned.fill(
+            child: TweenAnimationBuilder<double>(
+              tween: Tween(end: widget.volume ?? 0.42),
+              duration: const Duration(milliseconds: 160),
+              curve: Curves.easeOut,
+              builder: (context, vol, _) => TweenAnimationBuilder<double>(
+                tween: Tween(end: widget.knobTurn),
+                duration: const Duration(milliseconds: 380),
+                curve: Curves.easeOutBack,
+                builder: (context, turn, _) => CustomPaint(
+                    painter: _ControlsPainter(
+                        volume: vol, knobTurn: turn, eqOn: widget.eqOn)),
+              ),
+            ),
+          ),
           // Tone arm, swinging about its pivot.
           Positioned.fill(
             child: TweenAnimationBuilder<double>(
@@ -118,9 +165,58 @@ class _NoorTurntableState extends State<NoorTurntable>
                   CustomPaint(painter: _ArmPainter(lift)),
             ),
           ),
+          // Touch areas, on top: the volume slider and the knob.
+          if (widget.onVolume != null)
+            Positioned(
+              left: s * (NoorTurntable.sliderX - 0.055),
+              top: s * (NoorTurntable.sliderTop - 0.05),
+              width: s * 0.11,
+              height: s *
+                  (NoorTurntable.sliderBottom - NoorTurntable.sliderTop + 0.10),
+              child: Semantics(
+                slider: true,
+                label: 'Volume',
+                value: '${((widget.volume ?? 0) * 100).round()}%',
+                child: GestureDetector(
+                  key: const ValueKey('volume-slider'),
+                  behavior: HitTestBehavior.opaque,
+                  onVerticalDragStart: (d) {
+                    widget.onVolumeHold?.call(true);
+                    _volumeAt(d.localPosition.dy);
+                  },
+                  onVerticalDragUpdate: (d) => _volumeAt(d.localPosition.dy),
+                  onVerticalDragEnd: (_) => widget.onVolumeHold?.call(false),
+                  onVerticalDragCancel: () => widget.onVolumeHold?.call(false),
+                  onTapUp: (d) => _volumeAt(d.localPosition.dy),
+                ),
+              ),
+            ),
+          if (widget.onKnob != null)
+            Positioned(
+              left: s * (NoorTurntable.knobCentre.dx - 0.1),
+              top: s * (NoorTurntable.knobCentre.dy - 0.1),
+              width: s * 0.2,
+              height: s * 0.2,
+              child: Semantics(
+                button: true,
+                label: 'Equalizer',
+                child: GestureDetector(
+                  key: const ValueKey('eq-knob'),
+                  behavior: HitTestBehavior.opaque,
+                  onTap: widget.onKnob,
+                ),
+              ),
+            ),
         ],
       ),
     );
+  }
+
+  /// [dy]: a touch in the slider's area, from its top edge.
+  void _volumeAt(double dy) {
+    final s = widget.size;
+    final y = (dy + s * (NoorTurntable.sliderTop - 0.05)) / s;
+    widget.onVolume?.call(NoorTurntable.volumeAt(y));
   }
 
   Widget _record(double s, double d, Offset c, double shift, String art,
@@ -295,14 +391,21 @@ class _SheenPainter extends CustomPainter {
   bool shouldRepaint(_SheenPainter old) => false;
 }
 
-/// Pitch slider and knob on the right of the plinth.
+/// Volume slider and equalizer knob on the right of the plinth.
 class _ControlsPainter extends CustomPainter {
+  _ControlsPainter(
+      {required this.volume, required this.knobTurn, required this.eqOn});
+  final double volume;
+  final double knobTurn;
+  final bool eqOn;
+
   @override
   void paint(Canvas canvas, Size size) {
     final s = size.width;
     // Slider slot.
-    final x = s * 0.875;
-    final top = s * 0.42, bottom = s * 0.60;
+    final x = s * NoorTurntable.sliderX;
+    final top = s * NoorTurntable.sliderTop,
+        bottom = s * NoorTurntable.sliderBottom;
     canvas.drawRRect(
       RRect.fromRectAndRadius(
           Rect.fromLTRB(x - s * 0.006, top, x + s * 0.006, bottom),
@@ -321,8 +424,8 @@ class _ControlsPainter extends CustomPainter {
         tick,
       );
     }
-    // Slider cap with a red dot.
-    final capY = top + (bottom - top) * 0.58;
+    // Slider cap: up = louder. Its dot is blue up to 60 %, red above.
+    final capY = bottom - (bottom - top) * volume.clamp(0.0, 1.0);
     final cap = RRect.fromRectAndRadius(
         Rect.fromCenter(
             center: Offset(x, capY), width: s * 0.026, height: s * 0.05),
@@ -336,11 +439,15 @@ class _ControlsPainter extends CustomPainter {
                   colors: [Color(0xFFF2F2F2), Color(0xFFCFCFCF)])
               .createShader(cap.outerRect));
     canvas.drawCircle(
-        Offset(x, capY), s * 0.004, Paint()..color = const Color(0xFFD2412F));
+        Offset(x, capY),
+        s * 0.0045,
+        Paint()
+          ..color = NoorTurntable.volumeDot(volume));
 
-    // Knob.
-    final k = Offset(s * 0.84, s * 0.80);
-    final kr = s * 0.075;
+    // Knob (the equalizer).
+    final k = Offset(
+        s * NoorTurntable.knobCentre.dx, s * NoorTurntable.knobCentre.dy);
+    final kr = s * NoorTurntable.knobRadius;
     canvas.drawCircle(
         k + Offset(0, s * 0.008),
         kr,
@@ -367,7 +474,8 @@ class _ControlsPainter extends CustomPainter {
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1
           ..color = const Color(0xFF8E929B));
-    final a = -pi / 4;
+    // Points left when the equalizer is off, turns right through the presets.
+    final a = -pi * 5 / 4 + knobTurn * pi * 1.5;
     canvas.drawLine(
         k + Offset(cos(a), sin(a)) * kr * 0.25,
         k + Offset(cos(a), sin(a)) * kr * 0.85,
@@ -375,12 +483,26 @@ class _ControlsPainter extends CustomPainter {
           ..strokeWidth = s * 0.006
           ..strokeCap = StrokeCap.round
           ..color = const Color(0xFF5D616A));
-    canvas.drawCircle(k + Offset(kr * 1.05, -kr * 1.05), s * 0.008,
-        Paint()..color = const Color(0xFF4A4C50));
+    // Its lamp: gold while the equalizer is on.
+    final lamp = k + Offset(kr * 1.05, -kr * 1.05);
+    if (eqOn) {
+      canvas.drawCircle(
+          lamp,
+          s * 0.016,
+          Paint()
+            ..color = const Color(0xFFD8B06A).withOpacity(0.45)
+            ..maskFilter = MaskFilter.blur(BlurStyle.normal, s * 0.01));
+    }
+    canvas.drawCircle(
+        lamp,
+        s * 0.008,
+        Paint()
+          ..color = eqOn ? const Color(0xFFD8B06A) : const Color(0xFF4A4C50));
   }
 
   @override
-  bool shouldRepaint(_ControlsPainter old) => false;
+  bool shouldRepaint(_ControlsPainter old) =>
+      old.volume != volume || old.knobTurn != knobTurn || old.eqOn != eqOn;
 }
 
 /// The tone arm. [lift] 0 = stylus on the record, 1 = parked to the right.

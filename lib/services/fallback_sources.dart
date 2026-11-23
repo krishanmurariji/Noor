@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import 'app_log.dart';
+import 'audio_quality.dart';
 import 'resolved_stream.dart';
 
 /// No backup servers are built in: public Piped/Invidious instances are
@@ -57,15 +58,12 @@ class _Candidate {
   final int? size;
 }
 
-/// Picks the lowest-bitrate mp4 audio (fast start, small), else lowest of any.
-_Candidate? _pickLowest(List<_Candidate> all) {
-  if (all.isEmpty) return null;
-  int byBitrate(_Candidate a, _Candidate b) => a.bitrate.compareTo(b.bitrate);
-  final mp4 = all.where((c) => c.mimeType.contains('mp4')).toList()
-    ..sort(byBitrate);
-  if (mp4.isNotEmpty) return mp4.first;
-  return (all.toList()..sort(byBitrate)).first;
-}
+/// Picks the best version (backup servers are only used when YouTube
+/// refuses, so one lookup per song: no size checks for every version).
+_Candidate? _pickBest(List<_Candidate> all) => pickOption<_Candidate>(
+    all,
+    (c) => AudioOption(bitrate: c.bitrate, mimeType: c.mimeType),
+    AudioTier.high);
 
 String _cleanMime(String raw) => raw.split(';').first.trim();
 
@@ -94,7 +92,7 @@ _Candidate? parsePipedStreams(Object? json) {
       _asInt(s['contentLength']),
     ));
   }
-  return _pickLowest(out);
+  return _pickBest(out);
 }
 
 /// Parses an Invidious `GET /api/v1/videos/{id}` response.
@@ -116,7 +114,7 @@ _Candidate? parseInvidiousVideo(Object? json) {
       _asInt(s['clen']),
     ));
   }
-  return _pickLowest(out);
+  return _pickBest(out);
 }
 
 /// Resolves a video through Piped / Invidious instances when YouTube itself
@@ -201,6 +199,7 @@ class FallbackStreamFetcher {
       totalBytes: size,
       mimeType: c.mimeType,
       origin: Uri.parse(base).host,
+      bitrate: c.bitrate,
       open: () => _openStream(url, size!),
     );
   }

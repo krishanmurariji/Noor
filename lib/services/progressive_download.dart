@@ -206,4 +206,18 @@ class ProgressiveDownload {
       }
     }
   }
+
+  /// Completes once [bytes] bytes (or the whole file) have arrived; throws if
+  /// the download fails or is cancelled first.
+  Future<void> receivedAtLeast(int bytes) async {
+    start();
+    final want = min(bytes, totalBytes);
+    while (true) {
+      final error = _error;
+      if (error != null) Error.throwWithStackTrace(error, _stack!);
+      if (_cancelled) throw StateError('download cancelled');
+      if (_received >= want || _done) return;
+      await _signal.future;
+    }
+  }
 }

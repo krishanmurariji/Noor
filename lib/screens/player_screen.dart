@@ -11,6 +11,9 @@ import '../providers/player_provider.dart';
 import '../providers/queue_rules.dart';
 import '../services/audio_handler.dart';
 import '../services/song_details.dart';
+import '../services/equalizer_settings.dart';
+import '../services/phone_volume.dart';
+import '../widgets/equalizer_sheet.dart';
 import '../theme/noor_palette.dart';
 import '../theme/noor_play_pause.dart';
 import '../theme/noor_search_button.dart';
@@ -394,6 +397,15 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   // ── Build ─────────────────────────────────────────────────────────────────
 
+  /// The playing song's version (null in tests / without the service).
+  ValueNotifier<SongVersion?>? _version() {
+    try {
+      return ref.read(audioHandlerProvider).version;
+    } catch (_) {
+      return null;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final ps = ref.watch(playerProvider);
@@ -402,6 +414,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     final swipeOn = ref.watch(gestureOnProvider(NoorGesture.playerRecordSwipe));
     final t = NoorTheme.of(context);
     final liked = song != null && ref.watch(isLikedProvider(song.videoId));
+    final volume = ref.watch(phoneVolumeProvider);
+    final eq = ref.watch(equalizerProvider);
     final playlists = ref.watch(playlistProvider);
     final playing = ps.status == NebulaPlayerStatus.playing;
     final loading = ps.status == NebulaPlayerStatus.loading ||
@@ -509,6 +523,21 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                                     incomingArtUrl: incoming?.thumbnailUrl,
                                     incomingShift:
                                         shift + (v < 0 ? _travel : -_travel),
+                                    volume: volume,
+                                    onVolume: volume == null
+                                        ? null
+                                        : (x) => ref
+                                            .read(phoneVolumeProvider.notifier)
+                                            .set(x),
+                                    onVolumeHold: (held) => ref
+                                        .read(phoneVolumeProvider.notifier)
+                                        .hold(held),
+                                    onKnob: () {
+                                      HapticFeedback.selectionClick();
+                                      showEqualizer(context);
+                                    },
+                                    knobTurn: knobTurnFor(eq),
+                                    eqOn: eq.on,
                                   );
                                 },
                               ),
@@ -561,6 +590,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                                 fontSize: 11,
                                 color: t.mute,
                                 fontWeight: FontWeight.w700)),
+                        // The song's version, quietly: "High · 160 kbps".
+                        _QualityLabel(version: _version()),
                         Text(_fmt(progress.duration),
                             style: TextStyle(
                                 fontSize: 11,
@@ -1502,6 +1533,34 @@ class _SongInfoSheet extends ConsumerWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// The playing song's version, as small quiet text between the times.
+class _QualityLabel extends StatelessWidget {
+  const _QualityLabel({required this.version});
+  final ValueNotifier<SongVersion?>? version;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = NoorTheme.of(context);
+    final v = version;
+    if (v == null) return const SizedBox.shrink();
+    return ValueListenableBuilder<SongVersion?>(
+      valueListenable: v,
+      builder: (context, ver, _) => AnimatedSwitcher(
+        duration: const Duration(milliseconds: 250),
+        child: ver == null
+            ? const SizedBox.shrink()
+            : Text(ver.label,
+                key: ValueKey(ver.label),
+                style: TextStyle(
+                    fontSize: 10.5,
+                    letterSpacing: 0.4,
+                    color: t.mute,
+                    fontWeight: FontWeight.w600)),
       ),
     );
   }

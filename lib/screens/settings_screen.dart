@@ -10,6 +10,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app_version.dart';
 import '../services/launch_requests.dart';
+import '../services/audio_handler.dart';
+import '../services/audio_quality.dart';
+import '../services/equalizer_settings.dart';
+import '../widgets/equalizer_sheet.dart';
 import '../providers/gesture_settings_provider.dart';
 import '../providers/library_provider.dart';
 import '../theme/noor_palette.dart';
@@ -158,6 +162,33 @@ class SettingsScreen extends ConsumerWidget {
                   const NoorLogo(),
                 ]),
               ),
+              const SizedBox(height: 26),
+
+              // ── Sound ────────────────────────────────────────────────────
+              const _Section('Sound'),
+              _Card(children: [
+                for (final q in SoundQuality.values)
+                  _Row(
+                    key: ValueKey('quality-${q.name}'),
+                    icon: switch (q) {
+                      SoundQuality.auto => Icons.wifi_rounded,
+                      SoundQuality.high => Icons.graphic_eq_rounded,
+                      SoundQuality.low => Icons.data_saver_on_rounded,
+                    },
+                    title: q.label,
+                    subtitle: q.detail,
+                    trailing: _Check(on: ref.watch(soundQualityProvider) == q),
+                    onTap: () => ref.read(soundQualityProvider.notifier).set(q),
+                  ),
+                _Row(
+                  icon: Icons.tune_rounded,
+                  title: 'Equalizer',
+                  subtitle: ref.watch(equalizerProvider).on
+                      ? ref.watch(equalizerProvider).preset
+                      : 'Off · also on the record player\'s knob',
+                  onTap: () => showEqualizer(context),
+                ),
+              ]),
               const SizedBox(height: 26),
 
               // ── Gestures ─────────────────────────────────────────────────
@@ -335,6 +366,64 @@ class SettingsScreen extends ConsumerWidget {
   }
 }
 
+/// The song quality setting (kept on the phone, and told to the player).
+class SoundQualityNotifier extends StateNotifier<SoundQuality> {
+  SoundQualityNotifier(this._handler) : super(SoundQuality.auto) {
+    SharedPreferences.getInstance().then((p) {
+      final v = p.getString(kSoundQualityKey);
+      if (mounted) {
+        state = SoundQuality.values
+            .firstWhere((q) => q.name == v, orElse: () => SoundQuality.auto);
+      }
+    }).catchError((_) {});
+  }
+
+  final NebulaAudioHandler? _handler;
+
+  Future<void> set(SoundQuality q) async {
+    state = q;
+    final h = _handler;
+    if (h != null) {
+      await h.setSoundQuality(q);
+      return;
+    }
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.setString(kSoundQualityKey, q.name);
+    } catch (_) {}
+  }
+}
+
+final soundQualityProvider =
+    StateNotifierProvider<SoundQualityNotifier, SoundQuality>((ref) {
+  NebulaAudioHandler? h;
+  try {
+    h = ref.read(audioHandlerProvider);
+  } catch (_) {}
+  return SoundQualityNotifier(h);
+});
+
+/// A round check mark for a choice in a list.
+class _Check extends StatelessWidget {
+  const _Check({required this.on});
+  final bool on;
+  @override
+  Widget build(BuildContext context) {
+    final t = NoorTheme.of(context);
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      width: 22,
+      height: 22,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: on ? t.ac : Colors.transparent,
+        border: Border.all(color: on ? t.ac : t.soft, width: 1.2),
+      ),
+      child: on ? Icon(Icons.check_rounded, size: 14, color: t.onAc) : null,
+    );
+  }
+}
+
 /// "Play when Noor opens" (kept on the phone).
 class PlayOnOpenNotifier extends StateNotifier<bool> {
   PlayOnOpenNotifier() : super(false) {
@@ -398,6 +487,7 @@ class _Card extends StatelessWidget {
 /// switch or an arrow.
 class _Row extends StatelessWidget {
   const _Row({
+    super.key,
     required this.icon,
     required this.title,
     required this.subtitle,

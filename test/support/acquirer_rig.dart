@@ -31,7 +31,7 @@ enum B { ok, status403, stall, truncated, oversize, error, slow }
 class FullDiskCache extends AudioCache {
   FullDiskCache(super.dir);
   @override
-  Future<void> put(String id, Uint8List bytes, {Set<String> protect = const {}}) async {}
+  Future<void> put(String id, Uint8List bytes, {Set<String> protect = const {}, int kbps = 0}) async {}
 }
 
 class Rig {
