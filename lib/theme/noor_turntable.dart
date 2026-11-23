@@ -169,7 +169,7 @@ class _NoorTurntableState extends State<NoorTurntable>
               duration: const Duration(milliseconds: 520),
               curve: Curves.easeInOutCubic,
               builder: (context, lift, _) =>
-                  CustomPaint(painter: _ArmPainter(lift)),
+                  CustomPaint(painter: NoorToneArmPainter(lift)),
             ),
           ),
           // Touch areas, on top: the volume slider and the knob.
@@ -510,8 +510,10 @@ class _ControlsPainter extends CustomPainter {
 }
 
 /// The tone arm. [lift] 0 = stylus on the record, 1 = parked to the right.
-class _ArmPainter extends CustomPainter {
-  _ArmPainter(this.lift);
+/// Paints in the turntable's square (its size = the turntable's), so the
+/// same arm can be drawn at any scale (the bottom card's small record).
+class NoorToneArmPainter extends CustomPainter {
+  NoorToneArmPainter(this.lift);
   final double lift;
 
   @override
@@ -629,5 +631,5 @@ class _ArmPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_ArmPainter old) => old.lift != lift;
+  bool shouldRepaint(NoorToneArmPainter old) => old.lift != lift;
 }

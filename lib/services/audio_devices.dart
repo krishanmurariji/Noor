@@ -1,4 +1,7 @@
 import 'dart:async';
+import 'dart:io' show Platform;
+
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 import 'package:flutter/services.dart';
 
@@ -30,6 +33,7 @@ class AudioDeviceEvent {
 /// when Noor starts). The same change reported twice within a moment
 /// (Android sometimes does) comes through once.
 Stream<AudioDeviceEvent> audioDeviceChanges() {
+  if (kIsWeb || !Platform.isAndroid) return const Stream.empty();
   const channel = EventChannel('noor/audio_devices');
   String? lastKey;
   var lastAt = DateTime.fromMillisecondsSinceEpoch(0);

@@ -12,6 +12,7 @@ import '../theme/noor_disc.dart';
 import '../theme/noor_gap_border.dart';
 import '../theme/noor_like_burst.dart';
 import '../theme/noor_palette.dart';
+import '../theme/noor_turntable.dart';
 import '../theme/noor_play_pause.dart';
 import '../theme/noor_song_card.dart';
 
@@ -272,21 +273,22 @@ class _MiniPlayerState extends ConsumerState<MiniPlayer>
                                       url: song.thumbnailUrl, size: disc),
                                 ),
                               ),
+                              // The same tone arm as the record player,
+                              // drawn at the small record's scale: its
+                              // turntable square is placed so the record
+                              // sits where the big one does.
                               Positioned(
-                                top: 2,
-                                left: 40,
-                                child: AnimatedRotation(
-                                  turns: playing
-                                      ? 0.0
-                                      : 0.12, // lifts up, off the record
-                                  duration: const Duration(milliseconds: 500),
-                                  curve: Curves.easeOutBack,
-                                  alignment: Alignment.topRight,
-                                  child: SizedBox(
-                                    width: 26,
-                                    height: 36,
-                                    child:
-                                        CustomPaint(painter: _ArmPainter(t.ac)),
+                                left: 5 + disc / 2 - _armSquare * 0.45,
+                                top: (height - 2) / 2 - _armSquare * 0.5 + 2,
+                                width: _armSquare,
+                                height: _armSquare,
+                                child: IgnorePointer(
+                                  child: TweenAnimationBuilder<double>(
+                                    tween: Tween(end: playing ? 0 : 1),
+                                    duration: const Duration(milliseconds: 520),
+                                    curve: Curves.easeInOutCubic,
+                                    builder: (_, lift, __) => CustomPaint(
+                                        painter: NoorToneArmPainter(lift)),
                                   ),
                                 ),
                               ),
@@ -394,36 +396,6 @@ class _PeekCard extends StatelessWidget {
   }
 }
 
-/// A slim tone arm: pivot top-right, curving down to a small head.
-class _ArmPainter extends CustomPainter {
-  _ArmPainter(this.color);
-  final Color color;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final p = Paint()
-      ..color = color
-      ..strokeWidth = 1.6
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
-    final head = Offset(size.width * 0.25, size.height * 0.88);
-    canvas.drawPath(
-        Path()
-          ..moveTo(size.width - 4, 4)
-          ..quadraticBezierTo(
-              size.width * 0.3, size.height * 0.2, head.dx, head.dy),
-        p);
-    final fill = Paint()..color = color;
-    canvas.drawCircle(Offset(size.width - 4, 4), 3.4, fill);
-    canvas.drawCircle(
-        Offset(size.width - 4, 4), 1.4, Paint()..color = Colors.white);
-    canvas.drawRRect(
-        RRect.fromRectAndRadius(
-            Rect.fromCenter(center: head, width: 5, height: 7),
-            const Radius.circular(1.5)),
-        fill);
-  }
-
-  @override
-  bool shouldRepaint(_ArmPainter old) => old.color != color;
-}
+/// The turntable square the small tone arm is drawn in: the record player's
+/// record is 0.78 of its turntable, so this square fits the 52 px record.
+const double _armSquare = 52 / (NoorTurntable.discRadius * 2);

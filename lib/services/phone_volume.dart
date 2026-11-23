@@ -1,4 +1,7 @@
 import 'dart:async';
+import 'dart:io' show Platform;
+
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +11,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 /// platforms).
 class PhoneVolumeNotifier extends StateNotifier<double?> {
   PhoneVolumeNotifier() : super(null) {
+    if (kIsWeb || !Platform.isAndroid) return; // only Android reports it
     _sub = _changes.receiveBroadcastStream().listen((v) {
       if (v is num && mounted && !_dragging) state = v.toDouble();
     }, onError: (Object _) {});
