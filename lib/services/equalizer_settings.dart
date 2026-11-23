@@ -151,7 +151,8 @@ class EqState {
 
 /// The equalizer setting, saved, and applied to the player.
 class EqualizerNotifier extends StateNotifier<EqState> {
-  EqualizerNotifier(this._eq, {Future<SharedPreferences> Function()? prefs})
+  EqualizerNotifier(this._eq,
+      {Future<SharedPreferences> Function()? prefs, this.onSwitched})
       : _prefs = prefs ?? SharedPreferences.getInstance,
         super(const EqState()) {
     unawaited(_load());
@@ -159,6 +160,10 @@ class EqualizerNotifier extends StateNotifier<EqState> {
 
   /// Null where there is no Android equalizer (tests, other platforms).
   final AndroidEqualizer? _eq;
+
+  /// Called after the equalizer is switched on or off, or a preset is
+  /// chosen (the player refreshes its audio path).
+  final Future<void> Function()? onSwitched;
   final Future<SharedPreferences> Function() _prefs;
   AndroidEqualizerParameters? _params;
 
@@ -210,20 +215,27 @@ class EqualizerNotifier extends StateNotifier<EqState> {
         await params.bands[i].setGain(g[i] / kJustAudioGainUnit);
       }
     } catch (e) {
-      nlog('[N] equalizer: $e');
+      nlog('[N] equalizer could not be applied: $e');
     }
   }
 
   Future<void> setOn(bool on) async {
     state = state.copyWith(on: on);
+    nlog('[N] equalizer ${on ? 'on' : 'off'} (${state.preset}, '
+        'bands: ${state.bands.length}, gains: ${state.gains.map((g) => g.toStringAsFixed(1)).join(' ')} dB)');
     await _apply();
+    await onSwitched?.call();
     await _save();
   }
 
   /// Picks a preset (and switches the equalizer on).
   Future<void> choose(String preset) async {
+    final wasOn = state.on;
     state = state.copyWith(preset: preset, on: true);
+    nlog('[N] equalizer preset $preset (gains: '
+        '${state.gains.map((g) => g.toStringAsFixed(1)).join(' ')} dB)');
     await _apply();
+    if (!wasOn) await onSwitched?.call();
     await _save();
   }
 
@@ -241,9 +253,9 @@ class EqualizerNotifier extends StateNotifier<EqState> {
 
 final equalizerProvider =
     StateNotifierProvider<EqualizerNotifier, EqState>((ref) {
-  AndroidEqualizer? eq;
+  NebulaAudioHandler? h;
   try {
-    eq = ref.read(audioHandlerProvider).equalizer;
+    h = ref.read(audioHandlerProvider);
   } catch (_) {}
-  return EqualizerNotifier(eq);
+  return EqualizerNotifier(h?.equalizer, onSwitched: h?.refreshAudioPath);
 });

@@ -114,6 +114,20 @@ class NebulaAudioHandler extends BaseAudioHandler with SeekHandler {
     } catch (_) {}
   }
 
+  /// After the equalizer is switched on or changed: some phones stop the
+  /// sound once an effect is attached mid-song until the audio path is
+  /// restarted. A seek to where the song already is restarts it without an
+  /// audible jump.
+  Future<void> refreshAudioPath() async {
+    if (!_player.playing) return;
+    try {
+      await _player.seek(_player.position);
+      nlog('[N] equalizer: audio path refreshed');
+    } catch (e) {
+      nlog('[N] equalizer: refresh failed: $e');
+    }
+  }
+
   // ── Wi-Fi upgrades of saved songs ───────────────────────────────────────
   // Saved songs below High are replaced by their best version, quietly:
   // only on Wi-Fi, one at a time, never the song playing, never while YouTube

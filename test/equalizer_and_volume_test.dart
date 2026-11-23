@@ -56,6 +56,21 @@ void main() {
   });
 
   group('the setting', () {
+    test('switching on, or choosing a preset while off, refreshes the audio path',
+        () async {
+      SharedPreferences.setMockInitialValues({});
+      var refreshed = 0;
+      final n = EqualizerNotifier(null, onSwitched: () async => refreshed++);
+      await Future<void>.delayed(Duration.zero);
+      await n.choose('Rock'); // off → on
+      expect(refreshed, 1);
+      await n.choose('Pop'); // already on: no refresh needed
+      expect(refreshed, 1);
+      await n.setOn(false);
+      await n.setOn(true);
+      expect(refreshed, 3);
+    });
+
     test('choose, fine-tune (becomes Custom), and it is saved', () async {
       SharedPreferences.setMockInitialValues({});
       final n = EqualizerNotifier(null);
