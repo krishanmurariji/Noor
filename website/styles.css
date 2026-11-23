@@ -1,0 +1,395 @@
+/* Noor's two colours (copper + ivory by day, gold + espresso by night)
+   and their tints. Everything moves through --p, a 0→1 progress that
+   main.js sets on each [data-scene] as it scrolls past. */
+:root {
+  --ivory: #fbf8f4;
+  --paper: #ffffff;
+  --copper: #8e4a27;
+  --copper-soft: #b8794f;
+  --espresso: #1f1914;
+  --gold: #d8b06a;
+  --ink: #2b211a;
+  --mute: #8a7b6c;
+  --line: rgba(142, 74, 39, 0.18);
+  --shadow: 0 40px 80px -30px rgba(31, 25, 20, 0.45), 0 18px 36px -18px rgba(31, 25, 20, 0.35);
+  --script: "Dancing Script", cursive;
+  --serif: "Cormorant Garamond", Georgia, serif;
+  --sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --gutter: clamp(16px, 5vw, 64px);
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--ivory);
+  color: var(--ink);
+  font: 400 17px/1.6 var(--sans);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+img { display: block; max-width: 100%; }
+a { color: inherit; }
+
+/* ── Header ─────────────────────────────────────────────────────────── */
+.bar {
+  position: fixed; inset: 0 0 auto; z-index: 50;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px var(--gutter);
+  background: color-mix(in srgb, var(--ivory) 78%, transparent);
+  backdrop-filter: blur(14px) saturate(1.2);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  border-bottom: 1px solid var(--line);
+}
+.brand { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+.brand span { font: 700 28px/1 var(--script); color: var(--copper); }
+.bar nav { display: flex; align-items: center; gap: 22px; font-size: 14px; font-weight: 500; }
+.bar nav a { text-decoration: none; color: var(--mute); transition: color .2s; }
+.bar nav a:hover { color: var(--copper); }
+.bar nav .pill {
+  color: var(--paper); background: var(--copper);
+  padding: 8px 16px; border-radius: 999px;
+}
+.bar nav .pill:hover { color: var(--paper); background: var(--espresso); }
+@media (max-width: 760px) {
+  .bar nav a:not(.pill) { display: none; }
+}
+
+/* ── Type ───────────────────────────────────────────────────────────── */
+.script { font-family: var(--script); font-weight: 700; color: var(--copper); }
+.serif { font-family: var(--serif); font-weight: 600; letter-spacing: -0.01em; }
+h2.serif { font-size: clamp(38px, 5.2vw, 68px); line-height: 1.02; margin: 0 0 22px; color: var(--espresso); }
+.eyebrow {
+  text-transform: uppercase; letter-spacing: .22em; font-size: 12px;
+  font-weight: 700; color: var(--copper-soft); margin: 0 0 14px;
+}
+.muted { color: var(--mute); }
+b { font-weight: 600; color: var(--espresso); }
+
+/* ── Buttons ────────────────────────────────────────────────────────── */
+.button {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 15px 26px; border-radius: 999px;
+  background: var(--copper); color: var(--paper);
+  font-weight: 600; text-decoration: none;
+  box-shadow: 0 14px 30px -12px rgba(142, 74, 39, .65);
+  transition: transform .25s, box-shadow .25s, background .25s;
+}
+.button:hover { transform: translateY(-2px); background: var(--espresso); box-shadow: 0 20px 36px -14px rgba(31, 25, 20, .6); }
+.button.big { font-size: 18px; padding: 18px 34px; }
+.ghost { color: var(--copper); font-weight: 600; text-decoration: none; padding: 15px 8px; }
+
+/* ── The phone frame ────────────────────────────────────────────────── */
+.phone {
+  margin: 0;
+  width: var(--w, 260px);
+  aspect-ratio: 411 / 891;
+  border-radius: calc(var(--w, 260px) * .14);
+  padding: calc(var(--w, 260px) * .028);
+  background: linear-gradient(145deg, #3a302a, #120e0b 60%, #2a221d);
+  box-shadow: var(--shadow), inset 0 0 0 1.5px rgba(255, 255, 255, .08);
+  position: relative;
+  transform-style: preserve-3d;
+}
+.phone img {
+  width: 100%; height: 100%; object-fit: cover;
+  border-radius: calc(var(--w, 260px) * .115);
+  background: var(--paper);
+}
+.phone::after { /* glass sheen */
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: linear-gradient(115deg, rgba(255,255,255,.18) 0%, rgba(255,255,255,0) 32%);
+}
+.phone.big { --w: clamp(230px, 24vw, 320px); }
+
+/* ── Scenes: tall sections with a sticky, 3D stage inside ─────────────── */
+.scene { position: relative; height: calc(var(--len, 1.5) * 100vh); --p: 0; }
+.scene .sticky {
+  position: sticky; top: 0; height: 100vh; overflow: hidden;
+  display: grid; align-items: center;
+  padding: 90px var(--gutter) 40px;
+  perspective: 1400px;
+}
+[data-depth] {
+  /* Layers further away move less: the parallax. */
+  transform: translate3d(0, calc((var(--p) - .5) * var(--depth, 0) * -1px), 0);
+  will-change: transform;
+}
+
+/* ── 1. Hero ────────────────────────────────────────────────────────── */
+.hero .sticky {
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center; text-align: center;
+  background:
+    radial-gradient(1200px 600px at 50% 110%, rgba(216, 176, 106, .28), transparent 70%),
+    var(--ivory);
+}
+.sun-glow {
+  position: absolute; width: 70vmax; height: 70vmax; border-radius: 50%;
+  left: 50%; top: 18%;
+  background: radial-gradient(circle, rgba(216,176,106,.45), rgba(216,176,106,0) 62%);
+  transform: translate(-50%, calc(-50% - var(--p) * 120px)) scale(calc(1 + var(--p) * .4));
+  pointer-events: none;
+}
+.hero-copy {
+  position: relative; z-index: 3; margin-top: -2vh;
+  transform: translate3d(0, calc(var(--p) * -220px), 0);
+  opacity: calc(1 - var(--p) * 3.2);
+}
+.hero h1 {
+  font-size: clamp(96px, 17vw, 230px); line-height: .82; margin: 0;
+  background: linear-gradient(180deg, var(--copper) 30%, #5b2c14);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 10px 30px rgba(142,74,39,.25));
+}
+.lede { max-width: 560px; margin: 18px auto 28px; color: var(--mute); font-size: clamp(16px, 1.6vw, 19px); }
+.cta { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+
+.stage {
+  /* The phones start just peeking over the bottom edge, under the title,
+     and rise to the middle as the title leaves. */
+  --w: clamp(170px, min(22vw, 34vh), 300px);
+  --h: calc(var(--w) * 2.168);
+  position: absolute; left: 50%; bottom: 0;
+  width: 0; height: 0;
+  transform-style: preserve-3d;
+  transform: translate3d(0, calc((1 - var(--p)) * var(--h) * .86 - var(--p) * 7vh), 0);
+}
+.stage .phone {
+  position: absolute; left: calc(var(--w) / -2); bottom: 0;
+}
+.p-center {
+  z-index: 3;
+  transform: rotateX(calc(28deg - var(--p) * 28deg)) translateZ(calc(var(--p) * 60px));
+}
+.p-left {
+  transform:
+    translateX(calc(-6% - var(--p) * 115%))
+    translateZ(calc(-120px + var(--p) * 40px))
+    rotateY(calc(var(--p) * 22deg)) rotateX(calc(28deg - var(--p) * 24deg));
+  opacity: calc(.4 + var(--p) * .6);
+}
+.p-right {
+  transform:
+    translateX(calc(6% + var(--p) * 115%))
+    translateZ(calc(-120px + var(--p) * 40px))
+    rotateY(calc(var(--p) * -22deg)) rotateX(calc(28deg - var(--p) * 24deg));
+  opacity: calc(.4 + var(--p) * .6);
+}
+.vinyl {
+  position: absolute; width: min(78vmin, 720px); aspect-ratio: 1; border-radius: 50%;
+  left: 50%; top: 50%;
+  background:
+    radial-gradient(circle, transparent 0 17%, #0d0b0a 17.4% 18.2%, transparent 18.6%),
+    repeating-radial-gradient(circle, #171311 0 2px, #241e1a 2.5px 3.5px),
+    #120f0d;
+  box-shadow: 0 50px 90px -30px rgba(31,25,20,.6);
+  transform:
+    translate(-50%, calc(-50% + 46vh - var(--p) * 26vh))
+    rotateX(62deg) rotateZ(calc(var(--spin, 0) * 1deg));
+  opacity: .9;
+}
+.vinyl::before { /* sheen */
+  content: ""; position: absolute; inset: 0; border-radius: 50%;
+  background: conic-gradient(from 30deg, transparent 0 12%, rgba(255,255,255,.10) 18%, transparent 26% 62%, rgba(255,255,255,.08) 68%, transparent 76%);
+}
+.vinyl .label {
+  position: absolute; inset: 33%; border-radius: 50%;
+  background: radial-gradient(circle, var(--ivory) 0 7%, transparent 7.5%),
+              url("assets/screens/player.webp") center 30% / 260% no-repeat;
+  box-shadow: inset 0 0 0 2px rgba(0,0,0,.35);
+}
+.scroll-hint {
+  position: absolute; bottom: 22px; left: 50%; transform: translateX(-50%);
+  width: 24px; height: 38px; border: 2px solid var(--copper-soft); border-radius: 14px;
+  opacity: calc(1 - var(--p) * 4); z-index: 4;
+}
+.scroll-hint span {
+  position: absolute; left: 50%; top: 7px; width: 4px; height: 8px; margin-left: -2px;
+  border-radius: 2px; background: var(--copper); animation: hint 1.6s ease-in-out infinite;
+}
+@keyframes hint { 0%,100% { transform: translateY(0); opacity: 1 } 70% { transform: translateY(12px); opacity: 0 } }
+
+/* ── Split scenes (text + visual) ───────────────────────────────────── */
+.split .sticky { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: clamp(24px, 5vw, 80px); }
+.split.reverse .sticky { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.copy { max-width: 540px; }
+.copy.center { margin: 0 auto; text-align: center; }
+.copy p { color: #5a4d42; }
+.visual { display: grid; place-items: center; position: relative; }
+
+.points { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 14px; }
+.points li {
+  padding: 14px 18px; border-radius: 18px; border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--paper) 70%, transparent);
+  color: #5a4d42;
+  opacity: calc(.25 + var(--on, 0) * .75);
+  transform: translateX(calc((1 - var(--on, 0)) * 26px));
+  transition: opacity .35s, transform .35s, border-color .35s, box-shadow .35s;
+}
+.points li[data-on] { border-color: rgba(142,74,39,.45); box-shadow: 0 14px 30px -20px rgba(142,74,39,.6); }
+
+.tilt {
+  position: relative; transform-style: preserve-3d;
+  transform: rotateY(calc(-18deg + var(--p) * 30deg)) rotateX(calc(8deg - var(--p) * 10deg));
+}
+.callout {
+  position: absolute; display: flex; align-items: center; gap: 8px;
+  padding: 8px 14px; border-radius: 999px; font-size: 13px; font-weight: 600;
+  color: var(--paper); background: var(--espresso);
+  box-shadow: 0 14px 28px -12px rgba(0,0,0,.5);
+  transform: translateZ(90px) scale(calc(.6 + var(--on, 0) * .4));
+  opacity: var(--on, 0); transition: opacity .35s, transform .35s;
+}
+.callout i { width: 8px; height: 8px; border-radius: 50%; background: var(--gold); }
+.c1 { right: -26%; top: 37%; }
+.c2 { right: -22%; top: 55%; }
+.c3 { left: -26%; top: 18%; }
+
+/* Sound */
+.layers { position: relative; transform-style: preserve-3d; }
+.chip {
+  position: absolute; padding: 10px 16px; border-radius: 16px;
+  font-weight: 600; font-size: 14px; white-space: nowrap;
+  background: var(--paper); color: var(--copper);
+  border: 1px solid var(--line); box-shadow: var(--shadow);
+}
+.q-high { left: -24%; top: 18%; }
+.q-auto { right: -26%; top: 62%; background: var(--espresso); color: var(--gold); border-color: transparent; }
+.bars {
+  position: absolute; left: -14%; bottom: 8%; display: flex; align-items: flex-end; gap: 5px;
+  padding: 14px 16px; border-radius: 18px; background: var(--copper);
+  box-shadow: var(--shadow);
+}
+.bars span { width: 6px; border-radius: 3px; background: var(--gold); animation: eq 1.1s ease-in-out infinite alternate; }
+.bars span:nth-child(1){height:18px;animation-delay:-.2s}.bars span:nth-child(2){height:32px;animation-delay:-.5s}
+.bars span:nth-child(3){height:24px;animation-delay:-.1s}.bars span:nth-child(4){height:40px;animation-delay:-.7s}
+.bars span:nth-child(5){height:28px;animation-delay:-.3s}.bars span:nth-child(6){height:36px;animation-delay:-.6s}
+.bars span:nth-child(7){height:20px;animation-delay:-.4s}
+@keyframes eq { to { transform: scaleY(.35); } }
+.stats { display: flex; gap: 26px; margin: 26px 0 0; }
+.stats dt { font: 600 44px/1 var(--serif); color: var(--copper); }
+.stats dt small { font: 600 14px var(--sans); margin-left: 4px; color: var(--copper-soft); }
+.stats dd { margin: 6px 0 0; font-size: 13px; color: var(--mute); }
+
+/* ── 4. Details ─────────────────────────────────────────────────────── */
+.details .sticky { grid-template-rows: auto 1fr; gap: 10px; align-items: start; }
+.deck { position: relative; display: grid; place-items: center; transform-style: preserve-3d; }
+.note {
+  position: absolute; display: flex; align-items: baseline; gap: 10px;
+  min-width: 250px; padding: 14px 18px; border-radius: 16px;
+  background: color-mix(in srgb, var(--paper) 88%, transparent);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--line); box-shadow: var(--shadow);
+}
+.note span { font-size: 11px; letter-spacing: .14em; font-weight: 800; text-transform: uppercase; color: #b8893f; }
+.note i { flex: 1; border-bottom: 2px dotted rgba(142,74,39,.3); transform: translateY(-4px); }
+.note b { font-weight: 700; }
+.n1 { left: calc(50% - 470px); top: 22%; }
+.n2 { right: calc(50% - 470px); top: 38%; }
+.n3 { left: calc(50% - 430px); top: 64%; }
+
+/* ── 5. Ring carousel ───────────────────────────────────────────────── */
+.ring-scene .sticky { grid-template-rows: auto 1fr; align-items: start; }
+.ring-wrap { position: relative; display: grid; place-items: center; height: 100%; perspective: 1600px; }
+.ring {
+  --n: 6; --r: clamp(300px, 34vw, 520px);
+  position: relative; width: 0; height: 0; transform-style: preserve-3d;
+  transform: translateZ(calc(var(--r) * -1)) rotateY(calc(var(--p) * -300deg)) rotateX(-6deg);
+}
+.ring .phone {
+  --w: clamp(150px, 15vw, 220px);
+  position: absolute; left: calc(var(--w) / -2); top: calc(var(--w) * -1.08);
+  transform: rotateY(calc(var(--i) * 360deg / var(--n))) translateZ(var(--r));
+  backface-visibility: hidden;
+}
+.ring figcaption { /* read out, but shown below the ring instead */
+  position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%);
+}
+.ring-caption {
+  position: absolute; left: 0; right: 0; top: 0; margin: 0; text-align: center;
+  font: 600 clamp(20px, 2.4vw, 28px)/1.2 var(--serif); color: var(--copper);
+  transition: opacity .25s;
+}
+
+/* ── 6. Buds (dark) ─────────────────────────────────────────────────── */
+.dark .sticky { background: radial-gradient(900px 500px at 70% 50%, rgba(216,176,106,.16), transparent 70%), var(--espresso); }
+.dark h2.serif, .dark b { color: #f6efe8; }
+.dark .copy p { color: #cbbcae; }
+.dark .eyebrow { color: var(--gold); }
+.dark .muted { color: #9d8d7d; }
+.buds .sticky { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: clamp(24px, 5vw, 80px); }
+.halo {
+  position: absolute; width: 130%; aspect-ratio: 1; border-radius: 50%; z-index: -1;
+  background: radial-gradient(circle, rgba(216,176,106,.35), rgba(216,176,106,0) 60%);
+}
+
+/* ── 7. Day and night ───────────────────────────────────────────────── */
+.daynight .sticky {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); padding: 0;
+  background: linear-gradient(90deg, var(--ivory) 50%, var(--espresso) 50%);
+}
+.half {
+  display: grid; justify-items: center; align-content: center; gap: 26px;
+  height: 100vh; padding: 90px 16px 30px; text-align: center; transform-style: preserve-3d;
+}
+.half h2.serif { margin: 0; }
+.half.night h2.serif { color: var(--gold); }
+.half.day h2.serif { color: var(--copper); }
+.half.day .phone { transform: translateX(calc(30% - var(--p) * 30%)) rotateY(calc(24deg - var(--p) * 24deg)); }
+.half.night .phone { transform: translateX(calc(-30% + var(--p) * 30%)) rotateY(calc(-24deg + var(--p) * 24deg)); }
+
+/* ── 8. Download ────────────────────────────────────────────────────── */
+.download {
+  position: relative; text-align: center; overflow: hidden;
+  padding: 140px var(--gutter) 120px;
+  background: linear-gradient(180deg, var(--ivory), #f2e7da);
+}
+.download h2 { font-size: clamp(56px, 8vw, 110px); margin: 0 0 6px; line-height: 1; }
+.download > p { color: var(--mute); margin: 0 0 30px; }
+.download .fine { margin-top: 16px; font-size: 14px; color: var(--mute); }
+
+.steps { counter-reset: s; list-style: none; padding: 0; margin: 46px auto 0; max-width: 820px;
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; text-align: left; }
+.steps li { counter-increment: s; padding: 20px; border-radius: 20px; background: var(--paper); border: 1px solid var(--line); color: #5a4d42; font-size: 15px; }
+.steps li::before { content: counter(s); display: block; font: 700 34px/1 var(--script); color: var(--copper); margin-bottom: 6px; }
+
+footer {
+  display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap;
+  padding: 28px var(--gutter); background: var(--espresso); color: #cbbcae; font-size: 14px;
+}
+footer a { color: var(--gold); }
+
+/* ── Small screens: stack, simpler depth ────────────────────────────── */
+@media (max-width: 860px) {
+  .split .sticky, .split.reverse .sticky, .buds .sticky {
+    grid-template-columns: minmax(0, 1fr); align-content: center; gap: 22px; padding-top: 76px;
+  }
+  .split .copy, .buds .copy { order: 2; }
+  .split .visual, .buds .visual { order: 1; }
+  .phone.big { --w: clamp(150px, 42vw, 230px); }
+  h2.serif { font-size: clamp(32px, 8.5vw, 44px); margin-bottom: 12px; }
+  .points { gap: 8px; }
+  .points li { padding: 10px 14px; font-size: 14px; }
+  .copy p { font-size: 15px; }
+  .callout, .chip, .bars { font-size: 12px; }
+  .c1, .c2 { right: -48%; } .c3 { left: -46%; }
+  .q-high { left: -40%; } .q-auto { right: -46%; } .bars { left: -30%; }
+  .note { min-width: 200px; padding: 10px 14px; font-size: 13px; }
+  .n1 { left: 4%; top: 14%; } .n2 { right: 4%; top: 46%; } .n3 { left: 6%; top: 74%; }
+  .stats { gap: 18px; } .stats dt { font-size: 34px; }
+  .steps { grid-template-columns: minmax(0, 1fr); }
+  .ring { --r: 240px; }
+  .ring-caption { padding: 0 var(--gutter); }
+  .half { padding-top: 80px; gap: 16px; }
+  .half h2.serif { font-size: clamp(24px, 6.4vw, 34px); }
+  .half .phone.big { --w: clamp(120px, 38vw, 200px); }
+}
+
+/* ── Calm: no scrolling effects ─────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .scene { height: auto; }
+  .scene .sticky { position: relative; height: auto; min-height: 100vh; }
+  .bars span, .scroll-hint span { animation: none; }
+}

@@ -3,6 +3,7 @@ name: CI
 on:
   push:
     branches: [main, master, "claude/**"]
+    paths-ignore: ["website/**", ".github/workflows/pages.yml"]
   pull_request:
 
 concurrency:
