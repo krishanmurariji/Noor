@@ -35,7 +35,8 @@ class FakeHost implements JsHost {
   void dispose() => disposed = true;
 }
 
-String ejsReply(Map<String, String?> solved, {String? preprocessed}) => jsonEncode({
+String ejsReply(Map<String, String?> solved, {String? preprocessed}) =>
+    jsonEncode({
       'type': 'result',
       'responses': [
         {'type': 'result', 'data': solved}
@@ -63,7 +64,9 @@ void main() {
       expect(unwrapJsResult('"not \\ valid json"'), '"not \\ valid json"');
     });
 
-    test('a number or object wrapped in quotes that is not a string stays as is', () {
+    test(
+        'a number or object wrapped in quotes that is not a string stays as is',
+        () {
       expect(unwrapJsResult('"123"'), '123');
     });
   });
@@ -71,8 +74,13 @@ void main() {
   group('WebViewEJSSolver engine lifecycle', () {
     test('starts the engine once, even for concurrent first calls', () async {
       final host = FakeHost();
-      final s = WebViewEJSSolver(host: host, loadModules: () async => 'MODULES');
-      await Future.wait([s.executeJavaScript('1'), s.executeJavaScript('2'), s.executeJavaScript('3')]);
+      final s =
+          WebViewEJSSolver(host: host, loadModules: () async => 'MODULES');
+      await Future.wait([
+        s.executeJavaScript('1'),
+        s.executeJavaScript('2'),
+        s.executeJavaScript('3')
+      ]);
       expect(host.starts, 1);
       expect(host.bootstraps.single, 'MODULES');
       expect(host.codes, ['1', '2', '3']);
@@ -87,13 +95,16 @@ void main() {
       expect(host.starts, 1);
     });
 
-    test('a failed start is retried on the next call, not cached forever', () async {
+    test('a failed start is retried on the next call, not cached forever',
+        () async {
       final host = FakeHost()..startError = StateError('webview unavailable');
       var loads = 0;
-      final s = WebViewEJSSolver(host: host, loadModules: () async {
-        loads++;
-        return 'M';
-      });
+      final s = WebViewEJSSolver(
+          host: host,
+          loadModules: () async {
+            loads++;
+            return 'M';
+          });
       await expectLater(s.executeJavaScript('x'), throwsStateError);
       host.startError = null;
       expect(await s.executeJavaScript('ok'), '{}');
@@ -101,24 +112,32 @@ void main() {
       expect(host.starts, 2);
     });
 
-    test('modules that cannot be downloaded (offline) surface as an error, then recover', () async {
+    test(
+        'modules that cannot be downloaded (offline) surface as an error, then recover',
+        () async {
       final host = FakeHost();
       var offline = true;
-      final s = WebViewEJSSolver(host: host, loadModules: () async {
-        if (offline) throw const FormatException('no network');
-        return 'M';
-      });
+      final s = WebViewEJSSolver(
+          host: host,
+          loadModules: () async {
+            if (offline) throw const FormatException('no network');
+            return 'M';
+          });
       await expectLater(s.warmUp(), throwsFormatException);
       offline = false;
       await s.warmUp();
       expect(host.starts, 1);
     });
 
-    test('a hung JavaScript call times out instead of blocking forever', () async {
+    test('a hung JavaScript call times out instead of blocking forever',
+        () async {
       final host = FakeHost()..runDelay = const Duration(seconds: 5);
       final s = WebViewEJSSolver(
-          host: host, loadModules: () async => 'M', callTimeout: const Duration(milliseconds: 100));
-      await expectLater(s.executeJavaScript('slow'), throwsA(isA<TimeoutException>()));
+          host: host,
+          loadModules: () async => 'M',
+          callTimeout: const Duration(milliseconds: 100));
+      await expectLater(
+          s.executeJavaScript('slow'), throwsA(isA<TimeoutException>()));
     });
 
     test('dispose releases the host and allows a later restart', () async {
@@ -133,51 +152,63 @@ void main() {
   });
 
   group("end to end through the library's own challenge handling", () {
-    test('solves an n challenge, caches it, and reuses the preprocessed player', () async {
+    test('solves an n challenge, caches it, and reuses the preprocessed player',
+        () async {
       final host = FakeHost();
-      host.respond = (code) => ejsReply({'abc': 'SOLVED'}, preprocessed: 'PREPROCESSED');
+      host.respond =
+          (code) => ejsReply({'abc': 'SOLVED'}, preprocessed: 'PREPROCESSED');
       final s = WebViewEJSSolver(host: host, loadModules: () async => 'M');
       final playerFetches = <Uri>[];
 
       await http.runWithClient(() async {
-        final a = await s.solve('https://yt.example/player.js', JSChallengeType.n, 'abc');
+        final a = await s.solve(
+            'https://yt.example/player.js', JSChallengeType.n, 'abc');
         expect(a, 'SOLVED');
         // Same challenge again: answered from the cache, no JavaScript at all.
-        final again = await s.solve('https://yt.example/player.js', JSChallengeType.n, 'abc');
+        final again = await s.solve(
+            'https://yt.example/player.js', JSChallengeType.n, 'abc');
         expect(again, 'SOLVED');
         expect(host.codes.length, 1);
 
         // A new challenge for the same player must reuse the preprocessed player
         host.respond = (code) => ejsReply({'xyz': 'SOLVED2'});
-        final b = await s.solve('https://yt.example/player.js', JSChallengeType.n, 'xyz');
+        final b = await s.solve(
+            'https://yt.example/player.js', JSChallengeType.n, 'xyz');
         expect(b, 'SOLVED2');
-      }, () => MockClient((req) async {
-            playerFetches.add(req.url);
-            return http.Response('/* player script */', 200);
-          }));
+      },
+          () => MockClient((req) async {
+                playerFetches.add(req.url);
+                return http.Response('/* player script */', 200);
+              }));
 
       expect(host.codes.length, 2);
       expect(host.codes.first, contains('"type":"player"'));
       expect(host.codes.last, contains('"type":"preprocessed"'));
       expect(host.codes.last, contains('PREPROCESSED'));
-      expect(playerFetches.length, 1, reason: 'the 2 MB player is downloaded once');
+      expect(playerFetches.length, 1,
+          reason: 'the 2 MB player is downloaded once');
     });
 
-    test('an unsolvable challenge is reported as an error, not silently ignored', () async {
+    test(
+        'an unsolvable challenge is reported as an error, not silently ignored',
+        () async {
       final host = FakeHost()..respond = (code) => ejsReply({'abc': null});
       final s = WebViewEJSSolver(host: host, loadModules: () async => 'M');
       await http.runWithClient(() async {
         await expectLater(
-            s.solve('https://yt.example/p.js', JSChallengeType.n, 'abc'), throwsException);
+            s.solve('https://yt.example/p.js', JSChallengeType.n, 'abc'),
+            throwsException);
       }, () => MockClient((req) async => http.Response('x', 200)));
     });
 
-    test('garbage from the JavaScript side raises an error instead of hanging', () async {
+    test('garbage from the JavaScript side raises an error instead of hanging',
+        () async {
       final host = FakeHost()..respond = (code) => 'not json at all';
       final s = WebViewEJSSolver(host: host, loadModules: () async => 'M');
       await http.runWithClient(() async {
         await expectLater(
-            s.solve('https://yt.example/p.js', JSChallengeType.n, 'abc'), throwsA(anything));
+            s.solve('https://yt.example/p.js', JSChallengeType.n, 'abc'),
+            throwsA(anything));
       }, () => MockClient((req) async => http.Response('x', 200)));
     });
   });

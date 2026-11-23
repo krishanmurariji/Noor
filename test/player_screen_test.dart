@@ -12,12 +12,17 @@ class _P extends StateNotifier<NebulaPlayerState> implements PlayerNotifier {
   _P(super.s);
   final played = <String>[];
   @override
-  Future<void> playSong(Song song, {List<Song>? queue}) async => played.add(song.title);
+  Future<void> playSong(Song song, {List<Song>? queue}) async =>
+      played.add(song.title);
   @override
   dynamic noSuchMethod(Invocation i) => null;
 }
 
-Song s(String t) => Song(videoId: t.padRight(11, 'x').substring(0, 11), title: t, artist: 'A', thumbnailUrl: '');
+Song s(String t) => Song(
+    videoId: t.padRight(11, 'x').substring(0, 11),
+    title: t,
+    artist: 'A',
+    thumbnailUrl: '');
 
 void main() {
   final songs = [s('One'), s('Two'), s('Three')];
@@ -28,7 +33,8 @@ void main() {
     t.view.physicalSize = const Size(411, 891);
     t.view.devicePixelRatio = 1.0;
     addTearDown(t.view.reset);
-    final p = _P(NebulaPlayerState(song: songs[1], status: NebulaPlayerStatus.paused));
+    final p = _P(
+        NebulaPlayerState(song: songs[1], status: NebulaPlayerStatus.paused));
     await t.pumpWidget(ProviderScope(
       overrides: [playerProvider.overrideWith((ref) => p)],
       child: const MaterialApp(home: PlayerScreen()),
@@ -55,7 +61,9 @@ void main() {
     expect(t.takeException(), isNull);
   });
 
-  testWidgets('swipe left on the record plays the next song, right the previous', (t) async {
+  testWidgets(
+      'swipe left on the record plays the next song, right the previous',
+      (t) async {
     final p = await open(t);
     await t.fling(find.byType(NoorTurntable), const Offset(-300, 0), 1500);
     await settle(t);
@@ -76,14 +84,17 @@ void main() {
   /// not a fling).
   Future<void> drag(WidgetTester t, TestGesture g, double dx, int steps) async {
     for (var i = 0; i < steps; i++) {
-      await g.moveBy(Offset(dx, 0), timeStamp: Duration(milliseconds: 60 * (i + 1)));
+      await g.moveBy(Offset(dx, 0),
+          timeStamp: Duration(milliseconds: 60 * (i + 1)));
       await t.pump(const Duration(milliseconds: 16));
     }
   }
 
-  NoorTurntable table(WidgetTester t) => t.widget<NoorTurntable>(find.byType(NoorTurntable));
+  NoorTurntable table(WidgetTester t) =>
+      t.widget<NoorTurntable>(find.byType(NoorTurntable));
 
-  testWidgets('while swiping, the next record slides in beside the current one', (t) async {
+  testWidgets('while swiping, the next record slides in beside the current one',
+      (t) async {
     final p = await open(t);
     final g = await t.startGesture(t.getCenter(find.byType(NoorTurntable)));
     await drag(t, g, -12, 10);
@@ -96,7 +107,8 @@ void main() {
     await settle(t);
   });
 
-  testWidgets('letting go early puts the record back; nothing changes', (t) async {
+  testWidgets('letting go early puts the record back; nothing changes',
+      (t) async {
     final p = await open(t);
     final g = await t.startGesture(t.getCenter(find.byType(NoorTurntable)));
     await drag(t, g, -8, 10); // a short way

@@ -18,9 +18,9 @@ double knobTurnFor(EqState eq) {
 }
 
 /// The equalizer, opened from the knob on the record player: on/off,
-/// presets, and the phone's bands to fine-tune. On Samsung phones, where
-/// Noor's equalizer silences playback, Samsung's own equalizer opens instead
-/// (it applies to Noor's music).
+/// presets, and the phone's bands to fine-tune. On a phone with its own
+/// equalizer, that one opens instead (it applies to Noor's music); Noor's
+/// is for phones without one.
 Future<void> showEqualizer(BuildContext context) async {
   final container = ProviderScope.containerOf(context, listen: false);
   if (await container.read(systemEqualizerProvider.future)) {

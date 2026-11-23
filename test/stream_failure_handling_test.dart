@@ -11,7 +11,8 @@ const _t = [Duration(seconds: 5), Duration(seconds: 5), Duration(seconds: 5)];
 
 void main() {
   group('stall watchdog', () {
-    test('a download that stops receiving data fails instead of hanging', () async {
+    test('a download that stops receiving data fails instead of hanging',
+        () async {
       final src = StreamController<List<int>>();
       final dl = ProgressiveDownload(
         open: () => src.stream,
@@ -20,7 +21,8 @@ void main() {
       );
       dl.start();
       src.add(Uint8List(100)); // then silence
-      await expectLater(dl.completed.timeout(const Duration(seconds: 3)), throwsA(isA<TimeoutException>()));
+      await expectLater(dl.completed.timeout(const Duration(seconds: 3)),
+          throwsA(isA<TimeoutException>()));
       expect(dl.isFailed, isTrue);
     });
 
@@ -32,7 +34,8 @@ void main() {
         stallTimeout: const Duration(milliseconds: 150),
       );
       dl.start();
-      await expectLater(dl.completed.timeout(const Duration(seconds: 3)), throwsA(isA<TimeoutException>()));
+      await expectLater(dl.completed.timeout(const Duration(seconds: 3)),
+          throwsA(isA<TimeoutException>()));
     });
 
     test('steady progress never trips the watchdog', () async {
@@ -51,7 +54,8 @@ void main() {
       expect((await dl.completed).length, 600);
     });
 
-    test('watchdog stops after completion or cancel (no late errors)', () async {
+    test('watchdog stops after completion or cancel (no late errors)',
+        () async {
       final src = StreamController<List<int>>();
       final dl = ProgressiveDownload(
         open: () => src.stream,
@@ -109,11 +113,13 @@ void main() {
       r.penalize(1, const Duration(minutes: 5));
       tried.clear();
       await r.resolve('b');
-      expect(tried, [0], reason: 'once 1 is penalized, 0 (no longer penalized) is used');
+      expect(tried, [0],
+          reason: 'once 1 is penalized, 0 (no longer penalized) is used');
     });
 
     test('penalizing out-of-range or negative clients is ignored', () {
-      final r = StreamResolver<String>(timeouts: _t, fetch: (id, c) async => 'x');
+      final r =
+          StreamResolver<String>(timeouts: _t, fetch: (id, c) async => 'x');
       expect(() => r.penalize(-1, const Duration(seconds: 1)), returnsNormally);
       expect(() => r.penalize(99, const Duration(seconds: 1)), returnsNormally);
     });
@@ -130,11 +136,20 @@ void main() {
         },
       );
       expect((await r.resolve('v')).value, 'ok');
-      expect(lines.any((l) => l.contains('client 0 failed') && l.contains('requires sign in')), isTrue, reason: '$lines');
-      expect(lines.any((l) => l.contains('client 1') && l.contains('no usable audio')), isTrue, reason: '$lines');
+      expect(
+          lines.any((l) =>
+              l.contains('client 0 failed') && l.contains('requires sign in')),
+          isTrue,
+          reason: '$lines');
+      expect(
+          lines.any(
+              (l) => l.contains('client 1') && l.contains('no usable audio')),
+          isTrue,
+          reason: '$lines');
     });
 
-    test('every client penalized → no result and a countdown, not a crash', () async {
+    test('every client penalized → no result and a countdown, not a crash',
+        () async {
       final r = StreamResolver<String>(
         timeouts: _t,
         fetch: (id, c) async => 'x',
@@ -149,14 +164,16 @@ void main() {
   });
 
   group('network failures (DNS)', () {
-    test('the first DNS failure stops the lookup: no other client is asked', () async {
+    test('the first DNS failure stops the lookup: no other client is asked',
+        () async {
       final tried = <int>[];
       final r = StreamResolver<String>(
         timeouts: _t,
         minGap: Duration.zero,
         fetch: (id, c) async {
           tried.add(c);
-          throw Exception("ClientException with SocketException: Failed host lookup: 'www.youtube.com'");
+          throw Exception(
+              "ClientException with SocketException: Failed host lookup: 'www.youtube.com'");
         },
       );
       final res = await r.resolve('v');
@@ -164,7 +181,8 @@ void main() {
       expect(tried, [0]);
     });
 
-    test('a network failure does not penalize the client or start a pause', () async {
+    test('a network failure does not penalize the client or start a pause',
+        () async {
       var fail = true;
       final r = StreamResolver<String>(
         timeouts: _t,
@@ -177,7 +195,8 @@ void main() {
       await r.resolve('v');
       expect(r.globalCooldownSeconds, 0);
       fail = false;
-      expect((await r.resolve('v')).value, 'ok-0', reason: 'client 0 is still in use');
+      expect((await r.resolve('v')).value, 'ok-0',
+          reason: 'client 0 is still in use');
     });
   });
 

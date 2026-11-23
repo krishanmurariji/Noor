@@ -4,7 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:noor/services/latest_wins_runner.dart';
 
 void main() {
-  test('50 rapid submissions: one in flight, 48 dropped, last one wins', () async {
+  test('50 rapid submissions: one in flight, 48 dropped, last one wins',
+      () async {
     final started = <int>[];
     final finished = <int>[];
     var concurrent = 0;

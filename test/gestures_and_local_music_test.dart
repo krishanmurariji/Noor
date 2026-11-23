@@ -16,12 +16,13 @@ import 'package:noor/theme/noor_search_button.dart';
 import 'package:noor/widgets/song_row.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-Song s(String id, String t) =>
-    Song(videoId: id.padRight(11, 'x'), title: t, artist: 'A', thumbnailUrl: '');
+Song s(String id, String t) => Song(
+    videoId: id.padRight(11, 'x'), title: t, artist: 'A', thumbnailUrl: '');
 
 final songs = [s('a', 'Alpha'), s('b', 'Beta'), s('c', 'Gamma')];
 
-class _Player extends StateNotifier<NebulaPlayerState> implements PlayerNotifier {
+class _Player extends StateNotifier<NebulaPlayerState>
+    implements PlayerNotifier {
   _Player(super.s);
   final played = <String>[];
   @override
@@ -74,7 +75,13 @@ void main() {
 
     test('only media-library addresses are accepted', () {
       for (final bad in ['file:///etc/passwd', 'https://x.example/a.mp3', 42]) {
-        final m = {'videoId': 'local_1', 'title': 't', 'artist': '', 'thumbnailUrl': '', 'localUri': bad};
+        final m = {
+          'videoId': 'local_1',
+          'title': 't',
+          'artist': '',
+          'thumbnailUrl': '',
+          'localUri': bad
+        };
         expect(Song.fromMap(m).isLocal, isFalse, reason: '$bad');
       }
       expect(s('yt', 'YouTube').isLocal, isFalse);
@@ -87,15 +94,21 @@ void main() {
           .setMockMethodCallHandler(localMusicChannel, (call) async {
         if (call.method == 'list') {
           return [
-            {'id': 7, 'title': 'Phone Song', 'artist': 'Me', 'durationMs': 200000,
-              'uri': 'content://media/external/audio/media/7'},
+            {
+              'id': 7,
+              'title': 'Phone Song',
+              'artist': 'Me',
+              'durationMs': 200000,
+              'uri': 'content://media/external/audio/media/7'
+            },
             {'id': 'bad', 'title': 'Broken'}, // ignored
           ];
         }
         return null;
       });
     });
-    tearDown(() => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+    tearDown(() => TestDefaultBinaryMessengerBinding
+        .instance.defaultBinaryMessenger
         .setMockMethodCallHandler(localMusicChannel, null));
 
     test('refresh reads the library into phone songs', () async {
@@ -103,7 +116,8 @@ void main() {
       await n.refresh();
       expect(n.state.access, LocalAccess.granted);
       expect(n.state.songs.single.title, 'Phone Song');
-      expect(n.state.songs.single.localUri, 'content://media/external/audio/media/7');
+      expect(n.state.songs.single.localUri,
+          'content://media/external/audio/media/7');
       expect(n.state.songs.single.thumbnailUrl, 'localart://7');
     });
 
@@ -138,9 +152,11 @@ void main() {
       expect(find.byType(TextField), findsOneWidget);
     });
 
-    testWidgets('swipe up on the top of Home no longer opens the player', (t) async {
+    testWidgets('swipe up on the top of Home no longer opens the player',
+        (t) async {
       await openHome(t,
-          player: NebulaPlayerState(song: songs[0], status: NebulaPlayerStatus.playing));
+          player: NebulaPlayerState(
+              song: songs[0], status: NebulaPlayerStatus.playing));
       await t.fling(find.text('My History'), const Offset(0, -300), 1200);
       await settle(t, 8);
       expect(find.byType(PlayerScreen), findsNothing);
@@ -153,14 +169,16 @@ void main() {
       expect(find.byType(PlayerScreen), findsNothing);
     });
 
-    testWidgets('pulling the song list down past its top opens search', (t) async {
+    testWidgets('pulling the song list down past its top opens search',
+        (t) async {
       await openHome(t);
       await t.drag(find.text('Beta').first, const Offset(0, 260));
       await settle(t, 6);
       expect(find.byType(TextField), findsOneWidget);
     });
 
-    testWidgets('My Music without access offers the permission button', (t) async {
+    testWidgets('My Music without access offers the permission button',
+        (t) async {
       await openHome(t);
       // History, Favorites, Music: step along to My Music.
       await t.tap(find.byIcon(Icons.favorite_rounded));
@@ -173,7 +191,8 @@ void main() {
 
   group('Bottom card', () {
     Future<_Player> withCard(WidgetTester t) => openHome(t,
-        player: NebulaPlayerState(song: songs[0], status: NebulaPlayerStatus.playing));
+        player: NebulaPlayerState(
+            song: songs[0], status: NebulaPlayerStatus.playing));
 
     Finder card() => find.descendant(
         of: find.byType(MiniPlayer), matching: find.text('Alpha'));
@@ -186,7 +205,8 @@ void main() {
       expect(t.getTopLeft(card()).dx, lessThan(200));
     });
 
-    testWidgets('swiping left slides the card out and plays the next song', (t) async {
+    testWidgets('swiping left slides the card out and plays the next song',
+        (t) async {
       final p = await withCard(t);
       await t.drag(card(), const Offset(-200, 0));
       await settle(t, 10);
@@ -201,20 +221,24 @@ void main() {
       expect(p.played, ['Gamma']); // wraps round from the first
     });
 
-    testWidgets('while the card is dragged, the next song slides in beside it', (t) async {
+    testWidgets('while the card is dragged, the next song slides in beside it',
+        (t) async {
       final p = await withCard(t);
       final g = await t.startGesture(t.getCenter(card()));
       for (var i = 0; i < 8; i++) {
-        await g.moveBy(const Offset(-12, 0), timeStamp: Duration(milliseconds: 60 * (i + 1)));
+        await g.moveBy(const Offset(-12, 0),
+            timeStamp: Duration(milliseconds: 60 * (i + 1)));
         await t.pump(const Duration(milliseconds: 16));
       }
-      final next = find.descendant(of: find.byType(MiniPlayer), matching: find.text('Beta'));
+      final next = find.descendant(
+          of: find.byType(MiniPlayer), matching: find.text('Beta'));
       expect(next, findsOneWidget);
       expect(t.getTopLeft(next).dx, greaterThan(t.getTopLeft(card()).dx));
       expect(p.played, isEmpty);
       // Brought back: nothing changes and the next card goes away.
       for (var i = 0; i < 8; i++) {
-        await g.moveBy(const Offset(12, 0), timeStamp: Duration(milliseconds: 600 + 60 * i));
+        await g.moveBy(const Offset(12, 0),
+            timeStamp: Duration(milliseconds: 600 + 60 * i));
         await t.pump(const Duration(milliseconds: 16));
       }
       await g.up();
@@ -233,8 +257,10 @@ void main() {
 
   testWidgets('Search from the player comes back to the player', (t) async {
     await openHome(t,
-        player: NebulaPlayerState(song: songs[0], status: NebulaPlayerStatus.playing));
-    await t.tap(find.descendant(of: find.byType(MiniPlayer), matching: find.text('Alpha')));
+        player: NebulaPlayerState(
+            song: songs[0], status: NebulaPlayerStatus.playing));
+    await t.tap(find.descendant(
+        of: find.byType(MiniPlayer), matching: find.text('Alpha')));
     await settle(t, 8);
     expect(find.byType(PlayerScreen), findsOneWidget);
     await t.tap(find.byType(NoorSearchButton).last);
@@ -246,7 +272,9 @@ void main() {
     expect(find.byType(PlayerScreen), findsOneWidget);
   });
 
-  testWidgets('the playlist button is outlined, then filled once the song is in one', (t) async {
+  testWidgets(
+      'the playlist button is outlined, then filled once the song is in one',
+      (t) async {
     SharedPreferences.setMockInitialValues({
       'nebula_playlists': jsonEncode([
         {'id': 'p1', 'name': 'Road', 'songs': []}
@@ -257,13 +285,17 @@ void main() {
     addTearDown(t.view.reset);
     await t.pumpWidget(ProviderScope(
       child: MaterialApp(
-          home: Scaffold(body: ListView(children: [NoorSongRow(song: songs[0], onTap: () {})]))),
+          home: Scaffold(
+              body: ListView(
+                  children: [NoorSongRow(song: songs[0], onTap: () {})]))),
     ));
     await settle(t, 2);
-    final container = ProviderScope.containerOf(t.element(find.byType(NoorSongRow)));
+    final container =
+        ProviderScope.containerOf(t.element(find.byType(NoorSongRow)));
     await t.fling(find.text('Alpha'), const Offset(-260, 0), 1200);
     await settle(t);
-    Color iconColor() => t.widget<Icon>(find.byIcon(Icons.playlist_add_rounded)).color!;
+    Color iconColor() =>
+        t.widget<Icon>(find.byIcon(Icons.playlist_add_rounded)).color!;
     final outlined = iconColor();
     await container.read(playlistProvider.notifier).addSong('p1', songs[0]);
     await t.pump();

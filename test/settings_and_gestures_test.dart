@@ -107,7 +107,8 @@ void main() {
 
     testWidgets('the version line shows what this build really is', (t) async {
       await openSettings(t);
-      await t.scrollUntilVisible(find.byKey(const ValueKey('app-version')), 300);
+      await t.scrollUntilVisible(
+          find.byKey(const ValueKey('app-version')), 300);
       final label =
           t.widget<Text>(find.byKey(const ValueKey('app-version'))).data;
       // Tests run without the release workflow's values.

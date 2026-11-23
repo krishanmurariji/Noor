@@ -22,12 +22,17 @@ class _Service implements YoutubeSearchService {
   Future<SongSearchResult> searchAll(String query) async {
     searched.add(query);
     return SongSearchResult([
-      Song(videoId: 'result00001', title: 'Result for $query', artist: 'A', thumbnailUrl: ''),
+      Song(
+          videoId: 'result00001',
+          title: 'Result for $query',
+          artist: 'A',
+          thumbnailUrl: ''),
     ], const []);
   }
 
   @override
-  Future<List<Song>> searchSongs(String query) async => (await searchAll(query)).ranked;
+  Future<List<Song>> searchSongs(String query) async =>
+      (await searchAll(query)).ranked;
 
   @override
   Future<List<String>> suggestions(String query) async => const [];
@@ -40,7 +45,9 @@ void main() {
       expect(m.map((s) => (s.text, s.recent)), [('a', true), ('b', true)]);
     });
 
-    test('typed: matching recent first (at most 3), then YouTube without repeats', () {
+    test(
+        'typed: matching recent first (at most 3), then YouTube without repeats',
+        () {
       final m = mergeSuggestions('kes', [
         'Kesariya arijit',
         'tum hi ho',
@@ -63,7 +70,8 @@ void main() {
     });
 
     test('never more than twelve lines', () {
-      final m = mergeSuggestions('a', [], [for (var i = 0; i < 30; i++) 'a $i']);
+      final m =
+          mergeSuggestions('a', [], [for (var i = 0; i < 30; i++) 'a $i']);
       expect(m, hasLength(12));
     });
   });
@@ -71,7 +79,8 @@ void main() {
   group('search history', () {
     setUp(() => SharedPreferences.setMockInitialValues({}));
 
-    test('newest first, once whatever the case, and kept on the phone', () async {
+    test('newest first, once whatever the case, and kept on the phone',
+        () async {
       final h = SearchHistoryNotifier();
       await h.add('Kesariya');
       await h.add('tum hi ho');
@@ -102,7 +111,8 @@ void main() {
     });
 
     test('a corrupt saved list starts empty instead of failing', () async {
-      SharedPreferences.setMockInitialValues({SearchHistoryNotifier.key: '{oops'});
+      SharedPreferences.setMockInitialValues(
+          {SearchHistoryNotifier.key: '{oops'});
       final h = SearchHistoryNotifier();
       await h.loaded;
       expect(h.state, isEmpty);
@@ -124,7 +134,8 @@ void main() {
     late List<String> asked;
     late ProviderContainer container;
 
-    Future<void> openSearch(WidgetTester t, {List<String> recent = const []}) async {
+    Future<void> openSearch(WidgetTester t,
+        {List<String> recent = const []}) async {
       SharedPreferences.setMockInitialValues({
         SearchHistoryNotifier.key: jsonEncode(recent),
       });
@@ -157,7 +168,8 @@ void main() {
       expect(find.byIcon(Icons.history_rounded), findsWidgets);
     });
 
-    testWidgets('typing shows YouTube suggestions, asking once for fast typing', (t) async {
+    testWidgets('typing shows YouTube suggestions, asking once for fast typing',
+        (t) async {
       await openSearch(t);
       // A letter every 80 ms, with real 16 ms frames in between.
       Future<void> frames(int n) async {
@@ -178,7 +190,8 @@ void main() {
       expect(find.byIcon(Icons.search_rounded), findsNWidgets(3));
     });
 
-    testWidgets('tapping a suggestion searches it and the list goes away', (t) async {
+    testWidgets('tapping a suggestion searches it and the list goes away',
+        (t) async {
       await openSearch(t);
       await t.enterText(find.byType(TextField), 'kes');
       await settle(t);
@@ -190,7 +203,8 @@ void main() {
       expect(container.read(searchHistoryProvider).first, 'kes lyrics');
     });
 
-    testWidgets('the arrow puts a suggestion in the box to keep typing', (t) async {
+    testWidgets('the arrow puts a suggestion in the box to keep typing',
+        (t) async {
       await openSearch(t);
       await t.enterText(find.byType(TextField), 'kes');
       await settle(t);
@@ -217,7 +231,8 @@ void main() {
       expect(jsonDecode(saved!), ['kesariya']);
     });
 
-    testWidgets('offline: only the recent searches, YouTube is not asked', (t) async {
+    testWidgets('offline: only the recent searches, YouTube is not asked',
+        (t) async {
       await openSearch(t, recent: ['kesariya lofi']);
       container.read(connectionProvider.notifier).reportFailure();
       await t.enterText(find.byType(TextField), 'kes');
@@ -227,7 +242,8 @@ void main() {
       expect(find.byIcon(Icons.search_rounded), findsNothing);
     });
 
-    testWidgets('nothing to suggest: the panel underneath stays visible', (t) async {
+    testWidgets('nothing to suggest: the panel underneath stays visible',
+        (t) async {
       await openSearch(t);
       expect(find.byType(ListView).hitTestable(), findsNothing);
       expect(find.byIcon(Icons.history_rounded), findsNothing);

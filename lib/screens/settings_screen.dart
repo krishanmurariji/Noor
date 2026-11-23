@@ -190,7 +190,7 @@ class SettingsScreen extends ConsumerWidget {
                   title: 'Equalizer',
                   subtitle:
                       (ref.watch(systemEqualizerProvider).valueOrNull ?? false)
-                          ? 'Samsung\'s sound settings · also on the knob'
+                          ? 'Your phone\'s equalizer · also on the knob'
                           : ref.watch(equalizerProvider).on
                               ? ref.watch(equalizerProvider).preset
                               : 'Off · also on the record player\'s knob',

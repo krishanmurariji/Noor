@@ -7,18 +7,52 @@ import 'package:noor/services/fallback_sources.dart';
 
 const _piped = {
   'audioStreams': [
-    {'url': 'https://p.example/hi', 'bitrate': 128000, 'mimeType': 'audio/mp4', 'contentLength': 5000000},
-    {'url': 'https://p.example/lo', 'bitrate': 48000, 'mimeType': 'audio/mp4', 'contentLength': 1800000},
-    {'url': 'https://p.example/webm', 'bitrate': 40000, 'mimeType': 'audio/webm', 'contentLength': 1500000},
-    {'url': 'https://p.example/vid', 'bitrate': 10, 'mimeType': 'audio/mp4', 'videoOnly': true},
+    {
+      'url': 'https://p.example/hi',
+      'bitrate': 128000,
+      'mimeType': 'audio/mp4',
+      'contentLength': 5000000
+    },
+    {
+      'url': 'https://p.example/lo',
+      'bitrate': 48000,
+      'mimeType': 'audio/mp4',
+      'contentLength': 1800000
+    },
+    {
+      'url': 'https://p.example/webm',
+      'bitrate': 40000,
+      'mimeType': 'audio/webm',
+      'contentLength': 1500000
+    },
+    {
+      'url': 'https://p.example/vid',
+      'bitrate': 10,
+      'mimeType': 'audio/mp4',
+      'videoOnly': true
+    },
   ],
 };
 
 const _invidious = {
   'adaptiveFormats': [
-    {'url': 'https://i.example/video', 'type': 'video/mp4; codecs="avc1"', 'bitrate': '100'},
-    {'url': 'https://i.example/a2', 'type': 'audio/mp4; codecs="mp4a.40.2"', 'bitrate': '130000', 'clen': '4000000'},
-    {'url': 'https://i.example/a1', 'type': 'audio/mp4; codecs="mp4a.40.5"', 'bitrate': '48000', 'clen': '1700000'},
+    {
+      'url': 'https://i.example/video',
+      'type': 'video/mp4; codecs="avc1"',
+      'bitrate': '100'
+    },
+    {
+      'url': 'https://i.example/a2',
+      'type': 'audio/mp4; codecs="mp4a.40.2"',
+      'bitrate': '130000',
+      'clen': '4000000'
+    },
+    {
+      'url': 'https://i.example/a1',
+      'type': 'audio/mp4; codecs="mp4a.40.5"',
+      'bitrate': '48000',
+      'clen': '1700000'
+    },
   ],
 };
 
@@ -82,7 +116,9 @@ void main() {
       expect(r!.url.toString(), 'https://i.example/a2');
     });
 
-    test('a dead instance is skipped, next one is used, dead one is not retried soon', () async {
+    test(
+        'a dead instance is skipped, next one is used, dead one is not retried soon',
+        () async {
       var deadCalls = 0;
       var now = DateTime(2026);
       final f = make((req) async {
@@ -106,7 +142,11 @@ void main() {
     test('missing size triggers a HEAD request', () async {
       final noSize = {
         'audioStreams': [
-          {'url': 'https://p.example/lo', 'bitrate': 48000, 'mimeType': 'audio/mp4'},
+          {
+            'url': 'https://p.example/lo',
+            'bitrate': 48000,
+            'mimeType': 'audio/mp4'
+          },
         ],
       };
       final f = make((req) async {
@@ -118,7 +158,9 @@ void main() {
       expect((await f.fetch('abc'))!.totalBytes, 999999);
     });
 
-    test('never throws; returns null when every instance fails or none configured', () async {
+    test(
+        'never throws; returns null when every instance fails or none configured',
+        () async {
       final bad = make((req) async => throw Exception('network down'),
           ['https://a.example', 'https://b.example']);
       expect(await bad.fetch('abc'), isNull);

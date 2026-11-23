@@ -17,6 +17,7 @@ class RequestLimitExceededException implements Exception {}
 class VideoUnavailableException implements Exception {}
 
 const total = 20000;
+
 /// Deterministic bytes that look like an mp4 ("ftyp" at offset 4), so the
 /// self-test's "is this real audio" check can pass.
 Uint8List fileBytes([int n = total]) {
@@ -31,7 +32,8 @@ enum B { ok, status403, stall, truncated, oversize, error, slow }
 class FullDiskCache extends AudioCache {
   FullDiskCache(super.dir);
   @override
-  Future<void> put(String id, Uint8List bytes, {Set<String> protect = const {}, int kbps = 0}) async {}
+  Future<void> put(String id, Uint8List bytes,
+      {Set<String> protect = const {}, int kbps = 0}) async {}
 }
 
 class Rig {
@@ -81,12 +83,14 @@ class Rig {
           }
         }
         return ResolvedStream(
-          url: Uri.parse('https://rr1---sn-x.googlevideo.com/videoplayback?sig=S'),
+          url: Uri.parse(
+              'https://rr1---sn-x.googlevideo.com/videoplayback?sig=S'),
           totalBytes: size,
           mimeType: 'audio/mp4',
           open: _libraryStream,
           clientIndex: 3,
-          userAgent: 'com.google.android.youtube/20 (Linux; U; Android 11) gzip',
+          userAgent:
+              'com.google.android.youtube/20 (Linux; U; Android 11) gzip',
         );
       },
     );
@@ -110,9 +114,13 @@ class Rig {
     final data = fileBytes(total);
     switch (library) {
       case B.ok:
-        return Stream.fromIterable([for (var i = 0; i < data.length; i += 4000) data.sublist(i, min(i + 4000, data.length))]);
+        return Stream.fromIterable([
+          for (var i = 0; i < data.length; i += 4000)
+            data.sublist(i, min(i + 4000, data.length))
+        ]);
       case B.slow:
-        return Stream.fromFuture(Future.delayed(Duration(milliseconds: slowMs), () => data));
+        return Stream.fromFuture(
+            Future.delayed(Duration(milliseconds: slowMs), () => data));
       case B.status403:
         return Stream.error(Exception('FatalFailureException (403)'));
       case B.error:
@@ -132,10 +140,13 @@ class Rig {
     return MockClient.streaming((req, body) async {
       directCalls++;
       final data = fileBytes(total);
-      final m = RegExp(r'bytes=(\d+)-(\d+)').firstMatch(req.headers['Range'] ?? '');
+      final m =
+          RegExp(r'bytes=(\d+)-(\d+)').firstMatch(req.headers['Range'] ?? '');
       final start = m == null ? 0 : int.parse(m[1]!);
-      final end = m == null ? data.length - 1 : min(int.parse(m[2]!), data.length - 1);
-      http.StreamedResponse ok(List<int> b) => http.StreamedResponse(Stream.value(b), 206, request: req);
+      final end =
+          m == null ? data.length - 1 : min(int.parse(m[2]!), data.length - 1);
+      http.StreamedResponse ok(List<int> b) =>
+          http.StreamedResponse(Stream.value(b), 206, request: req);
       switch (direct) {
         case B.ok:
           return ok(data.sublist(start, end + 1));
@@ -172,4 +183,3 @@ Future<void> withRig(Rig rig, Future<void> Function(Rig) body) async {
     await rig.dispose();
   }
 }
-

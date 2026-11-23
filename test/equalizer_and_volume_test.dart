@@ -56,8 +56,7 @@ void main() {
   });
 
   group('the setting', () {
-    test('where the phone\'s equalizer is used (Samsung), Noor\'s stays off',
-        () async {
+    test('where the phone has its own equalizer, Noor\'s stays off', () async {
       SharedPreferences.setMockInitialValues(
           {kEqualizerKey: '{"on":true,"preset":"Rock"}'});
       final n = EqualizerNotifier(null)..systemPreferred = () async => true;

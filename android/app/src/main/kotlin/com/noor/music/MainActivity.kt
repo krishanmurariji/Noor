@@ -342,11 +342,11 @@ class MainActivity : AudioServiceActivity() {
                     .putExtra(AudioEffect.EXTRA_PACKAGE_NAME, packageName)
                     .putExtra(AudioEffect.EXTRA_CONTENT_TYPE, AudioEffect.CONTENT_TYPE_MUSIC)
                 when (call.method) {
-                    // Samsung phones: their own equalizer instead of Noor's
-                    // (an app equalizer silences playback there).
+                    // Any phone with its own equalizer (Samsung's Sound quality
+                    // and effects, MusicFX, an OEM's audio settings...): that
+                    // one is used instead of Noor's.
                     "preferred" -> result.success(
-                        Build.MANUFACTURER.equals("samsung", ignoreCase = true) &&
-                            panel().resolveActivity(packageManager) != null)
+                        panel().resolveActivity(packageManager) != null)
                     "open" -> {
                         try {
                             @Suppress("DEPRECATION")

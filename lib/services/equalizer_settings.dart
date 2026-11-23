@@ -150,8 +150,10 @@ class EqState {
   }
 }
 
-/// Samsung phones: Noor's equalizer silences playback there, so the knob and
-/// Settings open Samsung's own equalizer instead (true once known).
+/// Phones with their own equalizer (Samsung's, MusicFX, an OEM's audio
+/// settings): the knob and Settings open that one instead of Noor's, which
+/// can do less and on some phones (the S24) even silences playback. True
+/// once known.
 final systemEqualizerProvider = FutureProvider<bool>((ref) async {
   try {
     return await const MethodChannel('noor/system_eq')
@@ -171,7 +173,7 @@ class EqualizerNotifier extends StateNotifier<EqState> {
     unawaited(_load());
   }
 
-  /// True where the phone's own equalizer replaces Noor's (Samsung).
+  /// True where the phone's own equalizer replaces Noor's.
   Future<bool> Function() systemPreferred = () async => false;
 
   /// Null where there is no Android equalizer (tests, other platforms).

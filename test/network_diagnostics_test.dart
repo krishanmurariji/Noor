@@ -17,7 +17,8 @@ Future<List<DiagnosticResult>> run({
       if (dnsHang.contains(host)) {
         await Completer<void>().future; // never completes
       }
-      if (dnsFail.contains(host)) throw const SocketException('Failed host lookup');
+      if (dnsFail.contains(host))
+        throw const SocketException('Failed host lookup');
       return _addr;
     },
     status: (url) async {
@@ -34,8 +35,10 @@ void main() {
     expect(adviceFor(r), contains('looks fine'));
   });
 
-  test('YouTube DNS fails while google resolves → points to Private DNS', () async {
-    final r = await run(dnsFail: {'www.youtube.com', 'redirector.googlevideo.com'});
+  test('YouTube DNS fails while google resolves → points to Private DNS',
+      () async {
+    final r =
+        await run(dnsFail: {'www.youtube.com', 'redirector.googlevideo.com'});
     expect(adviceFor(r), allOf(contains('DNS'), contains('dns.google')));
   });
 

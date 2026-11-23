@@ -15,8 +15,8 @@ import 'package:noor/widgets/offline_pill.dart';
 import 'package:noor/widgets/song_row.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-Song s(String id, String t, {String artist = 'A'}) =>
-    Song(videoId: id.padRight(11, 'x'), title: t, artist: artist, thumbnailUrl: '');
+Song s(String id, String t, {String artist = 'A'}) => Song(
+    videoId: id.padRight(11, 'x'), title: t, artist: artist, thumbnailUrl: '');
 
 /// A connection whose answer the test sets.
 class FakeNet {
@@ -27,7 +27,8 @@ class FakeNet {
     return up;
   }
 
-  ConnectionNotifier notifier() => ConnectionNotifier(check: check, start: false);
+  ConnectionNotifier notifier() =>
+      ConnectionNotifier(check: check, start: false);
 }
 
 class FakeSearch implements YoutubeSearchService {
@@ -44,11 +45,13 @@ class FakeSearch implements YoutubeSearchService {
   dynamic noSuchMethod(Invocation i) => null;
 }
 
-class _Player extends StateNotifier<NebulaPlayerState> implements PlayerNotifier {
+class _Player extends StateNotifier<NebulaPlayerState>
+    implements PlayerNotifier {
   _Player() : super(const NebulaPlayerState());
   final played = <String>[];
   @override
-  Future<void> playSong(Song song, {List<Song>? queue}) async => played.add(song.title);
+  Future<void> playSong(Song song, {List<Song>? queue}) async =>
+      played.add(song.title);
   @override
   dynamic noSuchMethod(Invocation i) => null;
 }
@@ -74,7 +77,8 @@ void main() {
       expect(broken.state, Connection.offline);
     });
 
-    test('a reported failure shows offline at once; a success brings it back', () {
+    test('a reported failure shows offline at once; a success brings it back',
+        () {
       final n = FakeNet().notifier();
       n.reportFailure();
       expect(n.isOffline, isTrue);
@@ -113,7 +117,8 @@ void main() {
     });
     tearDown(() => c.dispose());
 
-    test('offline: YouTube is not asked, the panel searches the phone', () async {
+    test('offline: YouTube is not asked, the panel searches the phone',
+        () async {
       c.read(connectionProvider.notifier).reportFailure();
       net.up = false;
       await c.read(searchProvider.notifier).search('rain');
@@ -122,7 +127,8 @@ void main() {
       expect(c.read(searchProvider).query, 'rain');
     });
 
-    test('a failed search on a dead connection becomes the offline view', () async {
+    test('a failed search on a dead connection becomes the offline view',
+        () async {
       yt.error = const SearchException('Search timed out.');
       net.up = false;
       await c.read(searchProvider.notifier).search('rain');
@@ -131,14 +137,17 @@ void main() {
     });
 
     test('a failed search with working internet stays an error', () async {
-      yt.error = const SearchException('Search failed. Check your connection and try again.');
+      yt.error = const SearchException(
+          'Search failed. Check your connection and try again.');
       await c.read(searchProvider.notifier).search('rain');
       expect(c.read(searchProvider).status, SearchStatus.error);
       expect(c.read(connectionProvider), Connection.online);
     });
 
-    test('rate limiting is not mistaken for offline (no check needed)', () async {
-      yt.error = const SearchException('YouTube is limiting requests from your network.');
+    test('rate limiting is not mistaken for offline (no check needed)',
+        () async {
+      yt.error = const SearchException(
+          'YouTube is limiting requests from your network.');
       await c.read(searchProvider.notifier).search('rain');
       expect(c.read(searchProvider).status, SearchStatus.error);
       expect(net.checks, 0);
@@ -151,7 +160,8 @@ void main() {
       expect(c.read(searchProvider).status, SearchStatus.loaded);
     });
 
-    test('CHAOS: the connection flapping 50 times never leaves search confused', () async {
+    test('CHAOS: the connection flapping 50 times never leaves search confused',
+        () async {
       for (var i = 0; i < 50; i++) {
         net.up = i.isEven;
         if (i % 3 == 0) {
@@ -159,7 +169,8 @@ void main() {
         } else {
           await c.read(connectionProvider.notifier).recheck();
         }
-        yt.error = i % 4 == 0 ? const SearchException('Search timed out.') : null;
+        yt.error =
+            i % 4 == 0 ? const SearchException('Search timed out.') : null;
         await c.read(searchProvider.notifier).search('song $i');
         final st = c.read(searchProvider).status;
         expect(st, isNot(SearchStatus.loading));
@@ -181,7 +192,8 @@ void main() {
     Future<(ProviderContainer, _Player)> pump(WidgetTester t, Widget body,
         {bool offline = true, String query = 'rain'}) async {
       SharedPreferences.setMockInitialValues({
-        'nebula_history': jsonEncode([saved, notSaved, other].map((x) => x.toMap()).toList()),
+        'nebula_history':
+            jsonEncode([saved, notSaved, other].map((x) => x.toMap()).toList()),
       });
       t.view.physicalSize = const Size(411, 891);
       t.view.devicePixelRatio = 1.0;
@@ -197,8 +209,8 @@ void main() {
             return n;
           }),
           isOnDeviceProvider.overrideWithValue((id) => id == saved.videoId),
-          searchProvider.overrideWith((ref) => _StubSearch(ref,
-              SearchState(status: SearchStatus.offline, query: query))),
+          searchProvider.overrideWith((ref) => _StubSearch(
+              ref, SearchState(status: SearchStatus.offline, query: query))),
         ],
         child: MaterialApp(home: Scaffold(body: body)),
       ));
@@ -224,18 +236,26 @@ void main() {
       expect(find.text('Monsoon Rain'), findsNothing);
     });
 
-    testWidgets('offline, a song that needs internet is faded and explains itself', (t) async {
+    testWidgets(
+        'offline, a song that needs internet is faded and explains itself',
+        (t) async {
       final (_, p) = await pump(
           t,
           ListView(children: [
             NoorSongRow(song: notSaved, onTap: () {}),
             NoorSongRow(song: saved, onTap: () {}),
           ]));
-      final faded = t.widget<AnimatedOpacity>(find.ancestor(
-          of: find.text('Rainy Night'), matching: find.byType(AnimatedOpacity)).first);
+      final faded = t.widget<AnimatedOpacity>(find
+          .ancestor(
+              of: find.text('Rainy Night'),
+              matching: find.byType(AnimatedOpacity))
+          .first);
       expect(faded.opacity, lessThan(1));
-      final normal = t.widget<AnimatedOpacity>(find.ancestor(
-          of: find.text('Monsoon Rain'), matching: find.byType(AnimatedOpacity)).first);
+      final normal = t.widget<AnimatedOpacity>(find
+          .ancestor(
+              of: find.text('Monsoon Rain'),
+              matching: find.byType(AnimatedOpacity))
+          .first);
       expect(normal.opacity, 1);
       await t.tap(find.text('Rainy Night'));
       await t.pump(const Duration(milliseconds: 400));
@@ -244,14 +264,19 @@ void main() {
     });
 
     testWidgets('online, the same song is normal', (t) async {
-      await pump(t, ListView(children: [NoorSongRow(song: notSaved, onTap: () {})]),
+      await pump(
+          t, ListView(children: [NoorSongRow(song: notSaved, onTap: () {})]),
           offline: false);
-      final o = t.widget<AnimatedOpacity>(find.ancestor(
-          of: find.text('Rainy Night'), matching: find.byType(AnimatedOpacity)).first);
+      final o = t.widget<AnimatedOpacity>(find
+          .ancestor(
+              of: find.text('Rainy Night'),
+              matching: find.byType(AnimatedOpacity))
+          .first);
       expect(o.opacity, 1);
     });
 
-    testWidgets('the offline pill comes and goes with the connection', (t) async {
+    testWidgets('the offline pill comes and goes with the connection',
+        (t) async {
       final (c, _) = await pump(t, const NoorOfflinePill());
       expect(find.text('Offline · saved songs only'), findsOneWidget);
       c.read(connectionProvider.notifier).reportSuccess();
@@ -259,7 +284,8 @@ void main() {
       expect(find.text('Offline · saved songs only'), findsNothing);
     });
 
-    testWidgets('tapping a matched offline song plays it from the matches', (t) async {
+    testWidgets('tapping a matched offline song plays it from the matches',
+        (t) async {
       final (_, p) = await pump(t, SearchPanel(onRetry: () {}));
       await t.tap(find.text('Monsoon Rain'));
       await t.pump(const Duration(milliseconds: 400));
@@ -316,7 +342,8 @@ class FakeAsyncLike {
     flushMicrotasks();
     while (true) {
       _zoneTimers.sort((a, b) => a.due.compareTo(b.due));
-      final next = _zoneTimers.where((t) => t.isActive && t.due <= end).firstOrNull;
+      final next =
+          _zoneTimers.where((t) => t.isActive && t.due <= end).firstOrNull;
       if (next == null) break;
       _now = next.due;
       next.fire();

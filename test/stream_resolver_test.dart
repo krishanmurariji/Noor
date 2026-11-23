@@ -32,7 +32,8 @@ void main() {
     expect(results.map((e) => e.value), ['url-v1', 'url-v1']);
   });
 
-  test('a fresh value is served from cache, an expired one is refetched', () async {
+  test('a fresh value is served from cache, an expired one is refetched',
+      () async {
     var calls = 0;
     var now = DateTime(2026);
     final r = StreamResolver<String>(
@@ -72,7 +73,9 @@ void main() {
   });
 
   group('rate limiting (whole-IP, not per client)', () {
-    test('the first "rate limited" answer stops everything: other clients are NOT asked', () async {
+    test(
+        'the first "rate limited" answer stops everything: other clients are NOT asked',
+        () async {
       final tried = <int>[];
       final r = StreamResolver<String>(
         timeouts: _t,
@@ -84,7 +87,8 @@ void main() {
       );
       final res = await r.resolve('v');
       expect(res.kind, FailureKind.rateLimited);
-      expect(tried, [0], reason: 'hammering other clients only makes the limit worse');
+      expect(tried, [0],
+          reason: 'hammering other clients only makes the limit worse');
       expect(r.globalCooldownSeconds, inInclusiveRange(1, 20));
     });
 
@@ -122,7 +126,9 @@ void main() {
       expect((await r.resolve('x')).value, 'cached-x');
     });
 
-    test('the pause grows with consecutive limits (20s, 40s, 80s …) and a success resets it', () async {
+    test(
+        'the pause grows with consecutive limits (20s, 40s, 80s …) and a success resets it',
+        () async {
       var now = DateTime(2026);
       var limited = true;
       final r = StreamResolver<String>(
@@ -149,7 +155,8 @@ void main() {
       expect(r.globalCooldownSeconds, 0);
       limited = true;
       await r.resolve('b');
-      expect(r.globalCooldownSeconds, 20, reason: 'streak was reset by the success');
+      expect(r.globalCooldownSeconds, 20,
+          reason: 'streak was reset by the success');
     });
 
     test('the pause never exceeds 10 minutes', () async {
@@ -169,7 +176,8 @@ void main() {
     });
   });
 
-  test('attempts are spaced by minGap so failures never become a burst', () async {
+  test('attempts are spaced by minGap so failures never become a burst',
+      () async {
     final gaps = <Duration>[];
     final r = StreamResolver<String>(
       timeouts: _t,
@@ -178,7 +186,8 @@ void main() {
       fetch: (id, c) async => throw Exception('boom'),
     );
     await r.resolve('v');
-    expect(gaps, [const Duration(milliseconds: 400), const Duration(milliseconds: 400)]);
+    expect(gaps,
+        [const Duration(milliseconds: 400), const Duration(milliseconds: 400)]);
   });
 
   group('remembers the client that worked', () {
@@ -200,7 +209,8 @@ void main() {
       expect(tried, [1], reason: 'client 1 is asked first now and succeeds');
     });
 
-    test('if the remembered client stops working the others are tried again', () async {
+    test('if the remembered client stops working the others are tried again',
+        () async {
       final tried = <int>[];
       var oneWorks = true;
       final r = StreamResolver<String>(
@@ -218,13 +228,16 @@ void main() {
       tried.clear();
       final res = await r.resolve('b');
       expect(res.value, 'ok-2');
-      expect(tried, [1, 0, 2], reason: 'remembered first, then the rest in order');
+      expect(tried, [1, 0, 2],
+          reason: 'remembered first, then the rest in order');
       tried.clear();
       await r.resolve('c');
       expect(tried, [2], reason: '2 is the new favourite');
     });
 
-    test('a client penalized for undownloadable streams is forgotten as the favourite', () async {
+    test(
+        'a client penalized for undownloadable streams is forgotten as the favourite',
+        () async {
       final tried = <int>[];
       final r = StreamResolver<String>(
         timeouts: _t,
@@ -288,7 +301,8 @@ void main() {
     expect(res.kind, FailureKind.cancelled);
   });
 
-  test('when every caller gives up, the shared fetch stops trying more clients', () async {
+  test('when every caller gives up, the shared fetch stops trying more clients',
+      () async {
     final tried = <int>[];
     final gate = Completer<void>();
     final superseded = Completer<void>();
@@ -306,6 +320,7 @@ void main() {
     await f;
     gate.complete();
     await Future<void>.delayed(const Duration(milliseconds: 50));
-    expect(tried, [0], reason: 'abandoned fetch must not continue to clients 1, 2');
+    expect(tried, [0],
+        reason: 'abandoned fetch must not continue to clients 1, 2');
   });
 }

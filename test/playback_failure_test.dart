@@ -45,12 +45,16 @@ void main() {
       'Connection reset by peer',
       'Network is unreachable',
     ]) {
-      expect(classifyPlaybackError(Exception(msg)), FailureKind.network, reason: msg);
+      expect(classifyPlaybackError(Exception(msg)), FailureKind.network,
+          reason: msg);
     }
   });
 
   test('httpStatusInCause finds the server answer, and only a real one', () {
-    expect(httpStatusInCause('direct: HTTP 403 from rr6.googlevideo.com; library: Timeout'), 403);
+    expect(
+        httpStatusInCause(
+            'direct: HTTP 403 from rr6.googlevideo.com; library: Timeout'),
+        403);
     expect(httpStatusInCause(Exception('HTTP 429 from x')), 429);
     expect(httpStatusInCause('TimeoutException: no data for 10s'), isNull);
     expect(httpStatusInCause('SocketException: Failed host lookup'), isNull);
