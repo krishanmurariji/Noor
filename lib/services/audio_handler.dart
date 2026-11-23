@@ -114,18 +114,23 @@ class NebulaAudioHandler extends BaseAudioHandler with SeekHandler {
     } catch (_) {}
   }
 
-  /// After the equalizer is switched on or changed: some phones stop the
-  /// sound once an effect is attached mid-song until the audio path is
-  /// restarted. A seek to where the song already is restarts it without an
-  /// audible jump.
+  /// After the equalizer is switched on or off. On some phones attaching
+  /// the equalizer to the sound that is already playing silences it (even
+  /// at Flat), and a seek does not help. Reloading the song where it is
+  /// gives Android a fresh audio path with the equalizer there from the
+  /// start: done at once while playing, or on the next play when paused.
+  bool _reloadBeforePlay = false;
+
   Future<void> refreshAudioPath() async {
-    if (!_player.playing) return;
-    try {
-      await _player.seek(_player.position);
-      nlog('[N] equalizer: audio path refreshed');
-    } catch (e) {
-      nlog('[N] equalizer: refresh failed: $e');
+    final song = _current;
+    if (song == null) return;
+    if (!_player.playing) {
+      _reloadBeforePlay = true;
+      nlog('[N] equalizer: the song reloads when it plays again');
+      return;
     }
+    nlog('[N] equalizer: reloading the song at ${_player.position}');
+    _requestLoad(song, resumeAt: _player.position);
   }
 
   // ── Wi-Fi upgrades of saved songs ───────────────────────────────────────
@@ -542,6 +547,7 @@ class NebulaAudioHandler extends BaseAudioHandler with SeekHandler {
   /// Entry point for every load. Synchronous and cheap: it only records the
   /// request and publishes the new song to the UI immediately.
   void _requestLoad(Song song, {Duration? resumeAt, int attempt = 0}) {
+    _reloadBeforePlay = false; // a new load builds a fresh audio path anyway
     final tok = ++_tok;
     _loadingTok = tok;
     _retryTimer?.cancel();
@@ -915,6 +921,12 @@ class NebulaAudioHandler extends BaseAudioHandler with SeekHandler {
   Future<void> play() async {
     // Waiting for YouTube: the song starts by itself when the pause ends.
     if (isWaitingForYoutube) return;
+    final song = _current;
+    if (_reloadBeforePlay && song != null) {
+      _reloadBeforePlay = false;
+      _requestLoad(song, resumeAt: _player.position); // plays when ready
+      return;
+    }
     // just_audio's play() completes only when playback pauses/ends; don't await.
     unawaited(_player.play());
   }
