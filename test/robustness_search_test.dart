@@ -57,7 +57,9 @@ void main() {
     expect(state.status, SearchStatus.loaded);
   });
 
-  test('an older search that FAILS late does not replace newer results with an error', () async {
+  test(
+      'an older search that FAILS late does not replace newer results with an error',
+      () async {
     final n = c.read(searchProvider.notifier);
     final first = n.search('first');
     final second = n.search('second');
@@ -71,7 +73,8 @@ void main() {
   test('failures show a friendly message, never a raw exception', () async {
     final n = c.read(searchProvider.notifier);
     final f = n.search('boom');
-    fake.pending['boom']!.completeError(Exception('SocketException: secret.host:443 refused'));
+    fake.pending['boom']!
+        .completeError(Exception('SocketException: secret.host:443 refused'));
     await f;
     final st = c.read(searchProvider);
     expect(st.status, SearchStatus.error);
@@ -82,7 +85,8 @@ void main() {
   test('SearchException messages pass through', () async {
     final n = c.read(searchProvider.notifier);
     final f = n.search('t');
-    fake.pending['t']!.completeError(const SearchException('Search timed out.'));
+    fake.pending['t']!
+        .completeError(const SearchException('Search timed out.'));
     await f;
     expect(c.read(searchProvider).error, 'Search timed out.');
   });

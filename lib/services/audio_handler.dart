@@ -3,10 +3,13 @@ import 'package:flutter/services.dart';
 import 'youtube_search_service.dart';
 import 'voice_requests.dart';
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
 import 'package:audio_service/audio_service.dart';
+import 'package:flutter/foundation.dart' show ValueNotifier;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
@@ -15,7 +18,9 @@ import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 import '../models/song.dart';
 import 'app_log.dart';
 import 'audio_cache.dart';
+import 'audio_quality.dart';
 import 'backup_settings.dart';
+import 'download_audio_source.dart';
 import 'connectivity_probe.dart';
 import 'fallback_sources.dart';
 import 'latest_wins_runner.dart';
@@ -48,8 +53,180 @@ class _LoadRequest {
   const _LoadRequest(this.song, this.tok, this.resumeAt, this.attempt);
 }
 
+/// The version of the song playing now, for the player's quality label.
+class SongVersion {
+  const SongVersion(this.kbps, {required this.opus});
+  final int kbps;
+  final bool opus;
+
+  /// "High · 160 kbps"; a song saved by an older Noor (bitrate unknown,
+  /// always the lowest version) is just "Low".
+  String get label => kbps <= 0 ? 'Low' : '${qualityName(kbps)} · $kbps kbps';
+}
+
+/// Settings key for the song quality (Auto / High / Low).
+const kSoundQualityKey = 'noor_sound_quality';
+
 class NebulaAudioHandler extends BaseAudioHandler with SeekHandler {
-  final AudioPlayer _player = AudioPlayer();
+  /// Android's equalizer, applied to everything Noor plays.
+  final AndroidEqualizer equalizer = AndroidEqualizer();
+  late final AudioPlayer _player = AudioPlayer(
+      audioPipeline: AudioPipeline(androidAudioEffects: [equalizer]));
+
+  // ── Song quality ──────────────────────────────────────────────────────────
+  SoundQuality _quality = SoundQuality.auto;
+  SoundQuality get soundQuality => _quality;
+
+  /// The version of the song playing now (null: a phone file, or unknown).
+  final ValueNotifier<SongVersion?> version = ValueNotifier(null);
+
+  static const _network = MethodChannel('noor/network');
+
+  Future<NetworkState> _networkState() async {
+    final speed = _acquirer.speed.bitsPerSecond;
+    try {
+      final m = await _network.invokeMapMethod<String, Object?>('info');
+      return NetworkState(
+        wifi: m?['wifi'] == true,
+        dataSaver: m?['saver'] == true,
+        speedBps: speed,
+      );
+    } catch (_) {
+      return NetworkState(speedBps: speed); // not on Android: by speed only
+    }
+  }
+
+  Future<void> setSoundQuality(SoundQuality q) async {
+    _quality = q;
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.setString(kSoundQualityKey, q.name);
+    } catch (_) {}
+    nlog('[N] song quality: ${q.label}');
+  }
+
+  Future<void> _loadQuality() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      final v = p.getString(kSoundQualityKey);
+      _quality = SoundQuality.values
+          .firstWhere((q) => q.name == v, orElse: () => SoundQuality.auto);
+    } catch (_) {}
+  }
+
+  // ── The phone's own equalizer ─────────────────────────────────────────────
+  static const _systemEq = MethodChannel('noor/system_eq');
+  int? _session;
+
+  /// Tells Android which audio session is Noor's music, so the phone's own
+  /// equalizer (Samsung's, or an equalizer app) applies to it.
+  void _followAudioSession() {
+    _player.androidAudioSessionIdStream.listen((id) async {
+      if (id == null || id == _session) return;
+      final old = _session;
+      _session = id;
+      try {
+        if (old != null) {
+          await _systemEq.invokeMethod('detach', {'session': old});
+        }
+        await _systemEq.invokeMethod('attach', {'session': id});
+        nlog('[N] audio session $id shared with the phone\'s equalizer');
+      } catch (_) {/* not on Android */}
+    });
+  }
+
+  /// Opens the phone's own equalizer for Noor's music. False if it could not.
+  Future<bool> openSystemEqualizer() async {
+    try {
+      return await _systemEq.invokeMethod<bool>('open',
+              {'session': _session ?? _player.androidAudioSessionId ?? 0}) ??
+          false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// After the equalizer is switched on or off. On some phones attaching
+  /// the equalizer to the sound that is already playing silences it (even
+  /// at Flat), and a seek does not help. Reloading the song where it is
+  /// gives Android a fresh audio path with the equalizer there from the
+  /// start: done at once while playing, or on the next play when paused.
+  bool _reloadBeforePlay = false;
+
+  Future<void> refreshAudioPath() async {
+    final song = _current;
+    if (song == null) return;
+    if (!_player.playing) {
+      _reloadBeforePlay = true;
+      nlog('[N] equalizer: the song reloads when it plays again');
+      return;
+    }
+    nlog('[N] equalizer: reloading the song at ${_player.position}');
+    _requestLoad(song, resumeAt: _player.position);
+  }
+
+  // ── Wi-Fi upgrades of saved songs ───────────────────────────────────────
+  // Saved songs below High are replaced by their best version, quietly:
+  // only on Wi-Fi, one at a time, never the song playing, never while YouTube
+  // is limiting Noor, favourites first, and slowly (each one is a YouTube
+  // lookup, and too many lookups is what makes YouTube limit Noor).
+  Timer? _upgradeTimer;
+  bool _upgrading = false;
+  DateTime _upgradesPausedUntil = DateTime.fromMillisecondsSinceEpoch(0);
+
+  void _startUpgrades() {
+    _upgradeTimer ??=
+        Timer.periodic(const Duration(seconds: 45), (_) => _upgradeOne());
+  }
+
+  Future<void> _upgradeOne() async {
+    final cache = _cache;
+    if (_upgrading || cache == null) return;
+    if (_quality == SoundQuality.low) return;
+    if (DateTime.now().isBefore(_upgradesPausedUntil)) return;
+    if (_runner.isBusy || _acquirer.isBusy) return;
+    if (_resolver.globalCooldownSeconds > 0 || _waitTok != null) return;
+    final net = await _networkState();
+    if (!net.wifi) return;
+
+    final playing = _protectedIds;
+    final ids = cache
+        .belowKbps(110, first: await _likedIds())
+        .where((id) => !playing.contains(id))
+        .toList();
+    if (ids.isEmpty) return;
+
+    _upgrading = true;
+    try {
+      final before = cache.kbpsOf(ids.first);
+      final ok = await _acquirer.upgrade(ids.first, protect: _protectedIds);
+      if (ok) {
+        nlog('[N] upgraded a saved song to High ($before → '
+            '${cache.kbpsOf(ids.first)} kbps), ${ids.length - 1} left');
+      } else if (cache.contains(ids.first) &&
+          cache.belowKbps(110).contains(ids.first)) {
+        // Failed (not "nothing better"): rest a while before the next one.
+        _upgradesPausedUntil = DateTime.now().add(const Duration(minutes: 10));
+      }
+    } finally {
+      _upgrading = false;
+    }
+  }
+
+  Future<Set<String>> _likedIds() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      final raw = p.getString('nebula_liked');
+      if (raw == null) return const {};
+      return {
+        for (final m in jsonDecode(raw) as List)
+          if (m is Map && m['videoId'] is String) m['videoId'] as String
+      };
+    } catch (_) {
+      return const {};
+    }
+  }
+
   // Solves YouTube's JavaScript challenges (the "n" parameter / signatures) in
   // an invisible WebView. Without it most streams are throttled to zero bytes
   // or refused with 403.
@@ -129,24 +306,39 @@ class NebulaAudioHandler extends BaseAudioHandler with SeekHandler {
         .getManifest(videoId, ytClients: [_clients[client]]);
     if (m.audioOnly.isEmpty) return null;
 
-    // Lowest bitrate among plain downloadable audio (no HLS/DASH fragments):
-    // fastest start and smallest download. Codec does not matter: Android
-    // plays both AAC (mp4) and Opus (webm).
-    final usable = m.audioOnly.where((s) => s.fragments.isEmpty).toList()
-      ..sort((a, b) => a.bitrate.compareTo(b.bitrate));
+    // Every plain downloadable version (no HLS/DASH fragments). The version
+    // is chosen per song from these by the quality setting (SongAcquirer).
+    final usable = m.audioOnly.where((s) => s.fragments.isEmpty).toList();
     if (usable.isEmpty) return null;
-    final info = usable.first;
-    nlog(
-        '[N] ✓ manifest ok client=$client ${info.codec.mimeType} @ ${info.bitrate}');
-    return ResolvedStream(
-      url: info.url,
-      totalBytes: info.size.totalBytes,
-      mimeType: info.codec.mimeType,
-      open: () => _yt.videos.streamsClient.get(info),
+    final ua =
+        _clients[client].payload['context']?['client']?['userAgent'] as String?;
+    final versions = [
+      for (final info in usable)
+        ResolvedStream(
+          url: info.url,
+          totalBytes: info.size.totalBytes,
+          mimeType: info.codec.mimeType,
+          open: () => _yt.videos.streamsClient.get(info),
+          clientIndex: client,
+          userAgent: ua,
+          bitrate: info.bitrate.bitsPerSecond,
+          drc: isDrcUrl(info.url),
+        )
+    ];
+    final best = ResolvedStream(
+      url: versions.first.url,
+      totalBytes: versions.first.totalBytes,
+      mimeType: versions.first.mimeType,
+      open: versions.first.open,
       clientIndex: client,
-      userAgent: _clients[client].payload['context']?['client']?['userAgent']
-          as String?,
-    );
+      userAgent: ua,
+      bitrate: versions.first.bitrate,
+      drc: versions.first.drc,
+      alternatives: versions.skip(1).toList(),
+    ).choose(AudioTier.high);
+    nlog('[N] ✓ manifest ok client=$client: '
+        '${versions.map((v) => '${v.kbps}k${v.mimeType.contains('webm') ? ' opus' : ' aac'}${v.drc ? ' drc' : ''}').join(', ')}');
+    return best;
   }
 
   // ── Disk cache ────────────────────────────────────────────────────────────
@@ -187,6 +379,9 @@ class NebulaAudioHandler extends BaseAudioHandler with SeekHandler {
   Stream<void> get queueChanges => _queueChanged.stream;
 
   NebulaAudioHandler() {
+    _followAudioSession();
+    unawaited(_loadQuality());
+    _startUpgrades();
     _player.playbackEventStream.listen(
       _broadcast,
       onError: (Object e, StackTrace st) => _onPlayerError(e),
@@ -385,6 +580,7 @@ class NebulaAudioHandler extends BaseAudioHandler with SeekHandler {
   /// Entry point for every load. Synchronous and cheap: it only records the
   /// request and publishes the new song to the UI immediately.
   void _requestLoad(Song song, {Duration? resumeAt, int attempt = 0}) {
+    _reloadBeforePlay = false; // a new load builds a fresh audio path anyway
     final tok = ++_tok;
     _loadingTok = tok;
     _retryTimer?.cancel();
@@ -438,6 +634,7 @@ class NebulaAudioHandler extends BaseAudioHandler with SeekHandler {
           if (live()) _onPlayerError(e);
         }));
         _consecutiveFailures = 0;
+        version.value = null;
         nlog('[N] ✓ started (phone file): ${song.title}');
         _scheduleNextPrefetch(req.tok);
         return;
@@ -446,17 +643,29 @@ class NebulaAudioHandler extends BaseAudioHandler with SeekHandler {
       await _ensureCache();
       if (!live()) return;
 
+      final net = await _networkState();
+      final tier = tierFor(_quality, net);
+      if (!live()) return;
       final got = await _acquirer.acquire(
         song.videoId,
         superseded: ctx.superseded,
         protect: _protectedIds,
+        tier: tier,
+        whileDownloading: true,
       );
       if (!live()) return;
       usedDiskCache = got.fromCache;
+      final download = got.download;
       final AudioSource source = got.file != null
           ? AudioSource.file(got.file!.path)
-          : AudioSource.uri(got.url!,
-              headers: got.headers.isEmpty ? null : got.headers);
+          : download != null
+              ? DownloadAudioSource(download, mimeType: got.mimeType)
+              : AudioSource.uri(got.url!,
+                  headers: got.headers.isEmpty ? null : got.headers);
+      nlog('[N] quality: ${_quality.label} → ${tier.name}'
+          '${net.wifi ? ' (Wi-Fi)' : ''}'
+          '${net.speedBps == null ? '' : ' ~${(net.speedBps! / 1e6).toStringAsFixed(1)} Mbit/s'}; '
+          '${got.fromCache ? 'saved copy' : 'download'} ${got.kbps} kbps');
 
       await _player.setAudioSource(source, initialPosition: req.resumeAt);
       if (!live()) return;
@@ -470,6 +679,11 @@ class NebulaAudioHandler extends BaseAudioHandler with SeekHandler {
       }));
 
       _consecutiveFailures = 0;
+      version.value = got.kbps > 0
+          ? SongVersion(got.kbps,
+              opus: (got.file?.path.endsWith('.webm') ?? false) ||
+                  got.mimeType.contains('webm'))
+          : (got.fromCache ? const SongVersion(0, opus: false) : null);
       if (!usedDiskCache) _offline.add(false); // it came over the network
       nlog('[N] ✓ started: ${song.title}');
       _scheduleNextPrefetch(req.tok);
@@ -711,7 +925,9 @@ class NebulaAudioHandler extends BaseAudioHandler with SeekHandler {
       if (cache.contains(next.videoId)) return;
 
       nlog('[N] prefetch: ${next.title}');
-      final ok = await _acquirer.prefetch(next.videoId, protect: _protectedIds);
+      final tier = tierFor(_quality, await _networkState());
+      final ok = await _acquirer.prefetch(next.videoId,
+          protect: _protectedIds, tier: tier);
       if (ok && _tok == ptok) nlog('[N] prefetch done: ${next.title}');
     }());
   }
@@ -738,6 +954,12 @@ class NebulaAudioHandler extends BaseAudioHandler with SeekHandler {
   Future<void> play() async {
     // Waiting for YouTube: the song starts by itself when the pause ends.
     if (isWaitingForYoutube) return;
+    final song = _current;
+    if (_reloadBeforePlay && song != null) {
+      _reloadBeforePlay = false;
+      _requestLoad(song, resumeAt: _player.position); // plays when ready
+      return;
+    }
     // just_audio's play() completes only when playback pauses/ends; don't await.
     unawaited(_player.play());
   }

@@ -8,8 +8,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 Future<void> settle() => Future<void>.delayed(const Duration(milliseconds: 60));
 
-Map<String, dynamic> song(String id) =>
-    {'videoId': id, 'title': 'T $id', 'artist': 'A', 'thumbnailUrl': '', 'isOfficial': false};
+Map<String, dynamic> song(String id) => {
+      'videoId': id,
+      'title': 'T $id',
+      'artist': 'A',
+      'thumbnailUrl': '',
+      'isOfficial': false
+    };
 
 void main() {
   group('Song.fromMap survives garbage', () {
@@ -33,9 +38,21 @@ void main() {
     });
 
     test('isPlayable rejects ids that are unsafe or malformed', () {
-      Song s(String id) => Song(videoId: id, title: '', artist: '', thumbnailUrl: '');
+      Song s(String id) =>
+          Song(videoId: id, title: '', artist: '', thumbnailUrl: '');
       expect(s('dQw4w9WgXcQ').isPlayable, isTrue);
-      for (final bad in ['', ' ', '../../etc/passwd', 'a/b', 'a\\b', 'x' * 65, 'abc', 'id with space', 'é€', 'a\nb']) {
+      for (final bad in [
+        '',
+        ' ',
+        '../../etc/passwd',
+        'a/b',
+        'a\\b',
+        'x' * 65,
+        'abc',
+        'id with space',
+        'é€',
+        'a\nb'
+      ]) {
         expect(s(bad).isPlayable, isFalse, reason: 'should reject "$bad"');
       }
     });
@@ -44,19 +61,30 @@ void main() {
   group('decodeList', () {
     test('invalid JSON → empty list and onCorrupt called', () {
       Object? err;
-      final r = decodeList<Song>('{{ not json', Song.fromMap, onCorrupt: (e) => err = e);
+      final r = decodeList<Song>('{{ not json', Song.fromMap,
+          onCorrupt: (e) => err = e);
       expect(r, isEmpty);
       expect(err, isNotNull);
     });
 
     test('JSON that is not a list → empty, reported', () {
       var corrupt = false;
-      expect(decodeList<Song>('{"a":1}', Song.fromMap, onCorrupt: (_) => corrupt = true), isEmpty);
+      expect(
+          decodeList<Song>('{"a":1}', Song.fromMap,
+              onCorrupt: (_) => corrupt = true),
+          isEmpty);
       expect(corrupt, isTrue);
     });
 
     test('one bad entry never costs the good ones', () {
-      final raw = jsonEncode([song('aaaaaaaaaaa'), 42, 'str', null, {'videoId': 5}, song('bbbbbbbbbbb')]);
+      final raw = jsonEncode([
+        song('aaaaaaaaaaa'),
+        42,
+        'str',
+        null,
+        {'videoId': 5},
+        song('bbbbbbbbbbb')
+      ]);
       final r = decodeList<Song>(raw, (m) {
         final s = Song.fromMap(m);
         return s.videoId.isEmpty ? null : s;
@@ -84,13 +112,19 @@ void main() {
 
     test('mixed good and bad liked entries load the good ones', () async {
       SharedPreferences.setMockInitialValues({
-        'nebula_liked': jsonEncode([song('aaaaaaaaaaa'), 7, {'videoId': null}, song('ccccccccccc')]),
+        'nebula_liked': jsonEncode([
+          song('aaaaaaaaaaa'),
+          7,
+          {'videoId': null},
+          song('ccccccccccc')
+        ]),
       });
       final c = ProviderContainer();
       addTearDown(c.dispose);
       c.read(likedProvider);
       await settle();
-      expect(c.read(likedProvider).map((s) => s.videoId), ['aaaaaaaaaaa', 'ccccccccccc']);
+      expect(c.read(likedProvider).map((s) => s.videoId),
+          ['aaaaaaaaaaa', 'ccccccccccc']);
     });
 
     test('corrupt playlists and history do not crash', () async {
@@ -111,7 +145,12 @@ void main() {
       final pl = Playlist.fromMap({
         'id': 'p1',
         'name': 99,
-        'songs': [song('aaaaaaaaaaa'), 'x', null, {'videoId': ''}],
+        'songs': [
+          song('aaaaaaaaaaa'),
+          'x',
+          null,
+          {'videoId': ''}
+        ],
       });
       expect(pl.id, 'p1');
       expect(pl.name, 'Untitled');
@@ -139,7 +178,9 @@ void main() {
       expect(c.read(playlistProvider).single.songs.length, 1);
     });
 
-    test('playlist names are capped, ids are unique even when created back to back', () async {
+    test(
+        'playlist names are capped, ids are unique even when created back to back',
+        () async {
       SharedPreferences.setMockInitialValues({});
       final c = ProviderContainer();
       addTearDown(c.dispose);

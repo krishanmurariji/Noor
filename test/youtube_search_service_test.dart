@@ -5,14 +5,17 @@ import 'package:noor/services/youtube_search_service.dart';
 void main() {
   group('looksLikeSong', () {
     test('keeps normal songs and unknown durations', () {
-      expect(looksLikeSong(duration: const Duration(minutes: 4), isLive: false), isTrue);
+      expect(looksLikeSong(duration: const Duration(minutes: 4), isLive: false),
+          isTrue);
       expect(looksLikeSong(duration: null, isLive: false), isTrue);
       expect(looksLikeSong(duration: Duration.zero, isLive: false), isTrue);
     });
 
     test('drops live streams and very long mixes', () {
-      expect(looksLikeSong(duration: const Duration(minutes: 4), isLive: true), isFalse);
-      expect(looksLikeSong(duration: const Duration(hours: 3), isLive: false), isFalse);
+      expect(looksLikeSong(duration: const Duration(minutes: 4), isLive: true),
+          isFalse);
+      expect(looksLikeSong(duration: const Duration(hours: 3), isLive: false),
+          isFalse);
     });
   });
 

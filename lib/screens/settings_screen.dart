@@ -10,6 +10,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app_version.dart';
 import '../services/launch_requests.dart';
+import '../services/audio_handler.dart';
+import '../services/audio_quality.dart';
+import '../services/equalizer_settings.dart';
+import '../services/updater.dart';
+import '../widgets/equalizer_sheet.dart';
 import '../providers/gesture_settings_provider.dart';
 import '../providers/library_provider.dart';
 import '../theme/noor_palette.dart';
@@ -26,7 +31,11 @@ import 'playback_log_screen.dart';
 ///  * Help: the playback log.
 ///  * About: the logo, the real version of this build, the developer.
 class SettingsScreen extends ConsumerWidget {
-  const SettingsScreen({super.key});
+  const SettingsScreen({super.key, this.soundOnly = false});
+
+  /// Opened from the player: only what concerns the song playing (quality
+  /// and equalizer). From Home: everything.
+  final bool soundOnly;
 
   Future<void> _open(BuildContext context, String url) async {
     if (!await launchUrl(Uri.parse(url),
@@ -153,184 +162,344 @@ class SettingsScreen extends ConsumerWidget {
                   ),
                   const SizedBox(width: 14),
                   Expanded(
-                      child: Text('Settings',
+                      child: Text(soundOnly ? 'Sound' : 'Settings',
                           style: noorSongTitleStyle(t.ac, size: 32))),
                   const NoorLogo(),
                 ]),
               ),
               const SizedBox(height: 26),
 
-              // ── Gestures ─────────────────────────────────────────────────
-              const _Section('Gestures'),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(6, 0, 6, 10),
-                child: Text(
-                    'Turn off any swipe you keep doing by accident. Each one has a button or tap that does the same.',
-                    textAlign: TextAlign.center,
-                    style:
-                        TextStyle(color: t.mute, fontSize: 12.5, height: 1.35)),
-              ),
+              // ── Sound ────────────────────────────────────────────────────
+              if (!soundOnly) const _Section('Sound'),
               _Card(children: [
-                for (final g in NoorGesture.values)
+                for (final q in SoundQuality.values)
                   _Row(
-                    icon: switch (g) {
-                      NoorGesture.bottomCardSwipe => Icons.swap_horiz_rounded,
-                      NoorGesture.bottomCardSwipeUp => Icons.north_rounded,
-                      NoorGesture.homeSwipeDownSearch => Icons.south_rounded,
-                      NoorGesture.playerRecordSwipe => Icons.album_outlined,
-                      NoorGesture.songCardSwipe => Icons.west_rounded,
+                    key: ValueKey('quality-${q.name}'),
+                    icon: switch (q) {
+                      SoundQuality.auto => Icons.wifi_rounded,
+                      SoundQuality.high => Icons.graphic_eq_rounded,
+                      SoundQuality.low => Icons.data_saver_on_rounded,
                     },
-                    title: g.title,
-                    subtitle: g.subtitle,
+                    title: q.label,
+                    subtitle: q.detail,
+                    trailing: _Check(on: ref.watch(soundQualityProvider) == q),
+                    onTap: () => ref.read(soundQualityProvider.notifier).set(q),
+                  ),
+                _Row(
+                  icon: Icons.tune_rounded,
+                  title: 'Equalizer',
+                  subtitle:
+                      (ref.watch(systemEqualizerProvider).valueOrNull ?? false)
+                          ? 'Your phone\'s equalizer · also on the knob'
+                          : ref.watch(equalizerProvider).on
+                              ? ref.watch(equalizerProvider).preset
+                              : 'Off · also on the record player\'s knob',
+                  onTap: () => showEqualizer(context),
+                ),
+              ]),
+              const SizedBox(height: 26),
+
+              if (!soundOnly) ...[
+                // ── Gestures ─────────────────────────────────────────────────
+                const _Section('Gestures'),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(6, 0, 6, 10),
+                  child: Text(
+                      'Turn off any swipe you keep doing by accident. Each one has a button or tap that does the same.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                          color: t.mute, fontSize: 12.5, height: 1.35)),
+                ),
+                _Card(children: [
+                  for (final g in NoorGesture.values)
+                    _Row(
+                      icon: switch (g) {
+                        NoorGesture.bottomCardSwipe => Icons.swap_horiz_rounded,
+                        NoorGesture.bottomCardSwipeUp => Icons.north_rounded,
+                        NoorGesture.homeSwipeDownSearch => Icons.south_rounded,
+                        NoorGesture.playerRecordSwipe => Icons.album_outlined,
+                        NoorGesture.songCardSwipe => Icons.west_rounded,
+                      },
+                      title: g.title,
+                      subtitle: g.subtitle,
+                      trailing: NoorToggle(
+                        value: on.contains(g),
+                        label: g.title,
+                        onChanged: (v) => ref
+                            .read(gestureSettingsProvider.notifier)
+                            .set(g, v),
+                      ),
+                      onTap: () => ref
+                          .read(gestureSettingsProvider.notifier)
+                          .set(g, !on.contains(g)),
+                    ),
+                ]),
+                const SizedBox(height: 26),
+
+                // ── Voice & start ────────────────────────────────────────────
+                const _Section('Voice & start'),
+                _Card(children: [
+                  _Row(
+                    icon: Icons.play_circle_outline_rounded,
+                    title: 'Play when Noor opens',
+                    subtitle:
+                        'Carry on with the last song as soon as Noor starts',
                     trailing: NoorToggle(
-                      value: on.contains(g),
-                      label: g.title,
+                      value: ref.watch(playOnOpenProvider),
+                      label: 'Play when Noor opens',
                       onChanged: (v) =>
-                          ref.read(gestureSettingsProvider.notifier).set(g, v),
+                          ref.read(playOnOpenProvider.notifier).set(v),
                     ),
                     onTap: () => ref
-                        .read(gestureSettingsProvider.notifier)
-                        .set(g, !on.contains(g)),
+                        .read(playOnOpenProvider.notifier)
+                        .set(!ref.read(playOnOpenProvider)),
                   ),
-              ]),
-              const SizedBox(height: 26),
-
-              // ── Voice & start ────────────────────────────────────────────
-              const _Section('Voice & start'),
-              _Card(children: [
-                _Row(
-                  icon: Icons.play_circle_outline_rounded,
-                  title: 'Play when Noor opens',
-                  subtitle:
-                      'Carry on with the last song as soon as Noor starts',
-                  trailing: NoorToggle(
-                    value: ref.watch(playOnOpenProvider),
-                    label: 'Play when Noor opens',
-                    onChanged: (v) =>
-                        ref.read(playOnOpenProvider.notifier).set(v),
+                  _Row(
+                    icon: Icons.mic_none_rounded,
+                    title: 'Voice commands',
+                    subtitle: 'Google Assistant, Gemini and Bixby',
+                    onTap: () => _voiceHelp(context),
                   ),
-                  onTap: () => ref
-                      .read(playOnOpenProvider.notifier)
-                      .set(!ref.read(playOnOpenProvider)),
-                ),
-                _Row(
-                  icon: Icons.mic_none_rounded,
-                  title: 'Voice commands',
-                  subtitle: 'Google Assistant, Gemini and Bixby',
-                  onTap: () => _voiceHelp(context),
-                ),
-              ]),
-              const SizedBox(height: 26),
+                ]),
+                const SizedBox(height: 26),
 
-              // ── Library ──────────────────────────────────────────────────
-              const _Section('Library'),
-              _Card(children: [
-                _Row(
-                  icon: Icons.history_rounded,
-                  title: 'Clear history',
-                  subtitle: 'Empty My History',
-                  onTap: () => _clearHistory(context, ref),
-                ),
-                _Row(
-                  icon: Icons.shield_outlined,
-                  title: 'Backup sources',
-                  subtitle: 'Your own servers, used if YouTube fails',
-                  onTap: () => showBackupSourcesDialog(context),
-                ),
-              ]),
-              const SizedBox(height: 26),
+                // ── Library ──────────────────────────────────────────────────
+                const _Section('Library'),
+                _Card(children: [
+                  _Row(
+                    icon: Icons.history_rounded,
+                    title: 'Clear history',
+                    subtitle: 'Empty My History',
+                    onTap: () => _clearHistory(context, ref),
+                  ),
+                  _Row(
+                    icon: Icons.shield_outlined,
+                    title: 'Backup sources',
+                    subtitle: 'Your own servers, used if YouTube fails',
+                    onTap: () => showBackupSourcesDialog(context),
+                  ),
+                ]),
+                const SizedBox(height: 26),
 
-              // ── Help ─────────────────────────────────────────────────────
-              const _Section('Help'),
-              _Card(children: [
-                _Row(
-                  icon: Icons.receipt_long_outlined,
-                  title: 'Playback log',
-                  subtitle:
-                      'What the player did, to share when something fails',
-                  onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) => const PlaybackLogScreen())),
-                ),
-              ]),
-              const SizedBox(height: 26),
-
-              // ── About ────────────────────────────────────────────────────
-              const _Section('About'),
-              _Card(
-                padding: const EdgeInsets.fromLTRB(20, 22, 20, 20),
-                children: [
-                  Column(children: [
-                    const NoorLogo(size: 84),
-                    const SizedBox(height: 8),
-                    Text('Noor', style: noorSongTitleStyle(t.ac, size: 34)),
-                    const SizedBox(height: 2),
-                    Text('Music in a warm light',
-                        style: TextStyle(color: t.mute, fontSize: 12.5)),
-                    const SizedBox(height: 10),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 5),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: t.soft, width: 0.8),
-                      ),
-                      child: Text(AppVersion.label,
-                          key: const ValueKey('app-version'),
-                          style: TextStyle(
-                              color: t.ac,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600)),
+                // ── Updates ──────────────────────────────────────────────────
+                const _Section('Updates'),
+                _Card(children: [
+                  _Row(
+                    icon: Icons.system_update_alt_rounded,
+                    title: 'Update automatically',
+                    subtitle:
+                        'New versions download on Wi-Fi and install when nothing is playing',
+                    trailing: NoorToggle(
+                      value: ref.watch(updaterProvider).auto,
+                      label: 'Update automatically',
+                      onChanged: (v) =>
+                          ref.read(updaterProvider.notifier).setAuto(v),
                     ),
-                    const SizedBox(height: 20),
-                    Divider(color: t.faint, height: 1),
-                    const SizedBox(height: 18),
-                    Row(children: [
+                    onTap: () => ref
+                        .read(updaterProvider.notifier)
+                        .setAuto(!ref.read(updaterProvider).auto),
+                  ),
+                  _UpdateRow(),
+                ]),
+                const SizedBox(height: 26),
+
+                // ── Help ─────────────────────────────────────────────────────
+                const _Section('Help'),
+                _Card(children: [
+                  _Row(
+                    icon: Icons.receipt_long_outlined,
+                    title: 'Playback log',
+                    subtitle:
+                        'What the player did, to share when something fails',
+                    onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const PlaybackLogScreen())),
+                  ),
+                ]),
+                const SizedBox(height: 26),
+
+                // ── About ────────────────────────────────────────────────────
+                const _Section('About'),
+                _Card(
+                  padding: const EdgeInsets.fromLTRB(20, 22, 20, 20),
+                  children: [
+                    Column(children: [
+                      const NoorLogo(size: 84),
+                      const SizedBox(height: 8),
+                      Text('Noor', style: noorSongTitleStyle(t.ac, size: 34)),
+                      const SizedBox(height: 2),
+                      Text('Music in a warm light',
+                          style: TextStyle(color: t.mute, fontSize: 12.5)),
+                      const SizedBox(height: 10),
                       Container(
-                        padding: const EdgeInsets.all(2),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 5),
                         decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(color: t.ac, width: 0.8)),
-                        child: CircleAvatar(
-                          radius: 24,
-                          backgroundColor: t.wash,
-                          backgroundImage: const CachedNetworkImageProvider(
-                              'https://avatars.githubusercontent.com/Krishan-Vineforce?size=200'),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: t.soft, width: 0.8),
                         ),
+                        child: Text(AppVersion.label,
+                            key: const ValueKey('app-version'),
+                            style: TextStyle(
+                                color: t.ac,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600)),
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('Krishan Murari',
-                                style: noorSongTitleStyle(t.ac, size: 21)),
-                            Text('Made Noor',
-                                style: TextStyle(color: t.mute, fontSize: 12)),
-                          ],
+                      const SizedBox(height: 20),
+                      Divider(color: t.faint, height: 1),
+                      const SizedBox(height: 18),
+                      Row(children: [
+                        Container(
+                          padding: const EdgeInsets.all(2),
+                          decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(color: t.ac, width: 0.8)),
+                          child: CircleAvatar(
+                            radius: 24,
+                            backgroundColor: t.wash,
+                            backgroundImage: const CachedNetworkImageProvider(
+                                'https://avatars.githubusercontent.com/Krishan-Vineforce?size=200'),
+                          ),
                         ),
-                      ),
-                      _LinkButton(
-                          icon: FontAwesomeIcons.linkedinIn,
-                          label: 'LinkedIn',
-                          onTap: () => _open(context,
-                              'https://www.linkedin.com/in/krishan-murari/')),
-                      const SizedBox(width: 8),
-                      _LinkButton(
-                          icon: FontAwesomeIcons.github,
-                          label: 'GitHub',
-                          onTap: () => _open(
-                              context, 'https://github.com/krishanmurariji')),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Krishan Murari',
+                                  style: noorSongTitleStyle(t.ac, size: 21)),
+                              Text('Made Noor',
+                                  style:
+                                      TextStyle(color: t.mute, fontSize: 12)),
+                            ],
+                          ),
+                        ),
+                        _LinkButton(
+                            icon: FontAwesomeIcons.linkedinIn,
+                            label: 'LinkedIn',
+                            onTap: () => _open(context,
+                                'https://www.linkedin.com/in/krishan-murari/')),
+                        const SizedBox(width: 8),
+                        _LinkButton(
+                            icon: FontAwesomeIcons.github,
+                            label: 'GitHub',
+                            onTap: () => _open(
+                                context, 'https://github.com/krishanmurariji')),
+                      ]),
                     ]),
-                  ]),
-                ],
-              ),
+                  ],
+                ),
+              ],
             ],
           ),
           const Positioned(left: 0, right: 0, bottom: 0, child: MiniPlayer()),
         ],
       ),
+    );
+  }
+}
+
+/// The song quality setting (kept on the phone, and told to the player).
+class SoundQualityNotifier extends StateNotifier<SoundQuality> {
+  SoundQualityNotifier(this._handler) : super(SoundQuality.auto) {
+    SharedPreferences.getInstance().then((p) {
+      final v = p.getString(kSoundQualityKey);
+      if (mounted) {
+        state = SoundQuality.values
+            .firstWhere((q) => q.name == v, orElse: () => SoundQuality.auto);
+      }
+    }).catchError((_) {});
+  }
+
+  final NebulaAudioHandler? _handler;
+
+  Future<void> set(SoundQuality q) async {
+    state = q;
+    final h = _handler;
+    if (h != null) {
+      await h.setSoundQuality(q);
+      return;
+    }
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.setString(kSoundQualityKey, q.name);
+    } catch (_) {}
+  }
+}
+
+final soundQualityProvider =
+    StateNotifierProvider<SoundQualityNotifier, SoundQuality>((ref) {
+  NebulaAudioHandler? h;
+  try {
+    h = ref.read(audioHandlerProvider);
+  } catch (_) {}
+  return SoundQualityNotifier(h);
+});
+
+/// A round check mark for a choice in a list.
+class _Check extends StatelessWidget {
+  const _Check({required this.on});
+  final bool on;
+  @override
+  Widget build(BuildContext context) {
+    final t = NoorTheme.of(context);
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      width: 22,
+      height: 22,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: on ? t.ac : Colors.transparent,
+        border: Border.all(color: on ? t.ac : t.soft, width: 1.2),
+      ),
+      child: on ? Icon(Icons.check_rounded, size: 14, color: t.onAc) : null,
+    );
+  }
+}
+
+/// "Check for updates": what this build is, what is available, and the one
+/// button for the next step (check / download / install / allow).
+class _UpdateRow extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final u = ref.watch(updaterProvider);
+    final n = ref.read(updaterProvider.notifier);
+    final mine =
+        n.currentBuild > 0 ? 'Build #${n.currentBuild}' : 'Development build';
+    final next = u.info?.build;
+    final (String subtitle, VoidCallback onTap) = switch (u.phase) {
+      UpdatePhase.checking => ('$mine · checking…', () {}),
+      UpdatePhase.upToDate => ('$mine · up to date', () => n.check()),
+      UpdatePhase.available => (
+          'Build #$next is available · tap to download',
+          () => n.download(u.info!).then((ok) => ok ? n.install() : null)
+        ),
+      UpdatePhase.downloading => (
+          'Downloading build #$next · ${(u.progress * 100).round()}%',
+          () {}
+        ),
+      UpdatePhase.ready => (
+          u.message ?? 'Build #$next is ready · tap to install',
+          () => n.install()
+        ),
+      UpdatePhase.installing => ('Installing build #$next…', () {}),
+      UpdatePhase.needsPermission => (
+          'Allow Noor to install updates · tap, then come back',
+          () => n.allowInstalls()
+        ),
+      UpdatePhase.failed => (
+          '${u.message ?? 'Something went wrong.'} Tap to try again',
+          () => n.check()
+        ),
+      UpdatePhase.idle => ('$mine · tap to check', () => n.check()),
+    };
+    return _Row(
+      key: const ValueKey('check-updates'),
+      icon: Icons.refresh_rounded,
+      title: 'Check for updates',
+      subtitle: subtitle,
+      onTap: onTap,
     );
   }
 }
@@ -398,6 +567,7 @@ class _Card extends StatelessWidget {
 /// switch or an arrow.
 class _Row extends StatelessWidget {
   const _Row({
+    super.key,
     required this.icon,
     required this.title,
     required this.subtitle,

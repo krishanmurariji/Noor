@@ -49,13 +49,15 @@ void main() {
           return Stream.value(data);
         },
         totalBytes: 64);
-    final results = await Future.wait([_collect(dl.read(0)), _collect(dl.read(0))]);
+    final results =
+        await Future.wait([_collect(dl.read(0)), _collect(dl.read(0))]);
     expect(opens, 1);
     expect(results[0], data);
     expect(results[1], data);
   });
 
-  test('cancel stops the transfer and wakes waiting readers with an error', () async {
+  test('cancel stops the transfer and wakes waiting readers with an error',
+      () async {
     var cancelled = false;
     final src = StreamController<List<int>>(onCancel: () => cancelled = true);
     final dl = ProgressiveDownload(open: () => src.stream, totalBytes: 100);

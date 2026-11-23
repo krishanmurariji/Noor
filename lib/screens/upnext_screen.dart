@@ -176,7 +176,9 @@ class UpNextScreen extends ConsumerWidget {
                                     return NoorSongRow(
                                       key: ValueKey('upnext_${s.videoId}'),
                                       song: s,
-                                      actions: false,
+                                      // Hold to move; swipe left for the
+                                      // song's actions.
+                                      holdForActions: false,
                                       current: isCurrent,
                                       playing: isCurrent &&
                                           ps.status ==

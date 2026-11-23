@@ -11,10 +11,24 @@ class _Entry {
   /// 'mp4' (AAC) or 'webm' (Opus). The extension must match the contents so the
   /// player picks the right decoder instead of having to guess.
   final String ext;
-  _Entry(this.id, this.size, this.lastUsed, [this.ext = 'mp4']);
 
-  Map<String, dynamic> toJson() =>
-      {'id': id, 'sz': size, 'ts': lastUsed, 'ext': ext};
+  /// The version's bitrate in kbps (0: saved by an older Noor, which always
+  /// chose the lowest version).
+  final int kbps;
+
+  /// No better version of this song exists (checked once): never upgraded.
+  bool best;
+  _Entry(this.id, this.size, this.lastUsed,
+      [this.ext = 'mp4', this.kbps = 0, this.best = false]);
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'sz': size,
+        'ts': lastUsed,
+        'ext': ext,
+        if (kbps > 0) 'kb': kbps,
+        if (best) 'mx': true,
+      };
 
   static _Entry? tryParse(Object? j) {
     if (j is! Map) return null;
@@ -23,7 +37,9 @@ class _Entry {
     final ts = j['ts'];
     if (id is! String || sz is! int || ts is! int) return null;
     final ext = j['ext'] == 'webm' ? 'webm' : 'mp4';
-    return _Entry(id, sz, ts, ext);
+    final kb = j['kb'];
+    return _Entry(
+        id, sz, ts, ext, kb is int && kb > 0 ? kb : 0, j['mx'] == true);
   }
 }
 
@@ -34,7 +50,7 @@ class _Entry {
 /// leave a half-written song that looks complete, and the song that is
 /// currently playing is never evicted.
 class AudioCache {
-  AudioCache(this.dir, {this.maxBytes = 500 * 1024 * 1024});
+  AudioCache(this.dir, {this.maxBytes = 1024 * 1024 * 1024});
 
   final Directory dir;
   final int maxBytes;
@@ -69,6 +85,30 @@ class AudioCache {
 
   int get count => _index.length;
   int get totalBytes => _index.values.fold(0, (s, e) => s + e.size);
+
+  /// The saved version's bitrate in kbps (0: unknown / older Noor).
+  int kbpsOf(String id) => _index[id]?.kbps ?? 0;
+
+  /// Remembers that no better version of [id] exists.
+  void markBest(String id) {
+    final e = _index[id];
+    if (e == null || e.best) return;
+    e.best = true;
+    _scheduleSave();
+  }
+
+  /// Saved songs below [kbps] that may have a better version, most
+  /// recently played first. [first] go to the front (e.g. favourites).
+  List<String> belowKbps(int kbps, {Set<String> first = const {}}) {
+    final list = _index.values.where((e) => !e.best && e.kbps < kbps).toList()
+      ..sort((a, b) {
+        final fa = first.contains(a.id) ? 0 : 1;
+        final fb = first.contains(b.id) ? 0 : 1;
+        if (fa != fb) return fa.compareTo(fb);
+        return b.lastUsed.compareTo(a.lastUsed);
+      });
+    return [for (final e in list) e.id];
+  }
 
   /// Cheap in-memory check. Use [lookup] before actually playing the file.
   bool contains(String id) => isSafeId(id) && _index.containsKey(id);
@@ -137,7 +177,7 @@ class AudioCache {
   /// Stores a finished song. Never throws: a failed cache write must not
   /// affect playback.
   Future<void> put(String id, Uint8List bytes,
-      {Set<String> protect = const {}}) async {
+      {Set<String> protect = const {}, int kbps = 0}) async {
     if (!_ready || !isSafeId(id) || bytes.length < 4096) return;
     final tmp = File('${dir.path}/$id.${_seq++}.tmp');
     try {
@@ -150,8 +190,8 @@ class AudioCache {
           await _fileWith(id, old.ext).delete();
         } catch (_) {}
       }
-      _index[id] =
-          _Entry(id, bytes.length, DateTime.now().millisecondsSinceEpoch, ext);
+      _index[id] = _Entry(id, bytes.length,
+          old?.lastUsed ?? DateTime.now().millisecondsSinceEpoch, ext, kbps);
       _scheduleSave();
       await _evict(protect: {id, ...protect});
     } catch (_) {

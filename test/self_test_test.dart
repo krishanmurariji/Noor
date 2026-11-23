@@ -14,9 +14,11 @@ Uint8List mp4Like(int n) {
 }
 
 void main() {
-  test('sniffAudioContainer recognises mp4/m4a and webm/opus, nothing else', () {
+  test('sniffAudioContainer recognises mp4/m4a and webm/opus, nothing else',
+      () {
     expect(sniffAudioContainer(mp4Like(16)), 'mp4/m4a');
-    expect(sniffAudioContainer([0x1A, 0x45, 0xDF, 0xA3, 0, 0, 0, 0]), 'webm/opus');
+    expect(
+        sniffAudioContainer([0x1A, 0x45, 0xDF, 0xA3, 0, 0, 0, 0]), 'webm/opus');
     expect(sniffAudioContainer('<html>blocked</html>'.codeUnits), isNull);
     expect(sniffAudioContainer(const []), isNull);
     expect(sniffAudioContainer([1, 2, 3]), isNull);
@@ -29,18 +31,28 @@ void main() {
         timeout: const Duration(seconds: 5),
       );
 
-  test('a healthy pipeline passes and leaves the cache as it found it', () async {
+  test('a healthy pipeline passes and leaves the cache as it found it',
+      () async {
     await withRig(Rig(), (r) async {
       final steps = await run(r);
       final names = steps.map((s) => s.name).toList();
-      expect(names, ['Disk cache', 'Find and download', 'File is real audio', 'Saved for offline', 'Total']);
+      expect(names, [
+        'Disk cache',
+        'Find and download',
+        'File is real audio',
+        'Saved for offline',
+        'Total'
+      ]);
       expect(steps.every((s) => s.ok), isTrue, reason: steps.join('\n'));
       expect(selfTestVerdict(steps), startsWith('PASS'));
-      expect(r.cache.contains('dQw4w9WgXcQ'), isFalse, reason: 'no trace of the test is left');
+      expect(r.cache.contains('dQw4w9WgXcQ'), isFalse,
+          reason: 'no trace of the test is left');
     });
   });
 
-  test('a song already in the cache is re-downloaded, so the network path is what is tested', () async {
+  test(
+      'a song already in the cache is re-downloaded, so the network path is what is tested',
+      () async {
     await withRig(Rig(), (r) async {
       await r.cache.put('dQw4w9WgXcQ', fileBytes());
       await run(r);
@@ -48,17 +60,23 @@ void main() {
     });
   });
 
-  test('YouTube refusing every download is reported with a clear reason', () async {
+  test('YouTube refusing every download is reported with a clear reason',
+      () async {
     await withRig(Rig(direct: B.status403, library: B.status403), (r) async {
       final steps = await run(r);
       final bad = steps.firstWhere((s) => !s.ok && s.name != 'Total');
       expect(bad.name, 'Download the audio');
       expect(bad.detail, contains('403'));
-      expect(selfTestVerdict(steps), allOf(startsWith('FAIL'), contains('Download the audio')));
+      expect(selfTestVerdict(steps),
+          allOf(startsWith('FAIL'), contains('Download the audio')));
     });
   });
 
-  for (final k in [FailureKind.rateLimited, FailureKind.network, FailureKind.permanent]) {
+  for (final k in [
+    FailureKind.rateLimited,
+    FailureKind.network,
+    FailureKind.permanent
+  ]) {
     test('lookup failure $k gives specific advice', () async {
       await withRig(Rig(resolveKind: k), (r) async {
         final steps = await run(r);
@@ -75,7 +93,8 @@ void main() {
   }
 
   test('a hung pipeline times out instead of freezing the dialog', () async {
-    await withRig(Rig(direct: B.slow, library: B.slow, slowMs: 30000), (r) async {
+    await withRig(Rig(direct: B.slow, library: B.slow, slowMs: 30000),
+        (r) async {
       final steps = await runSelfTest(
         acquirer: r.acquirer,
         cache: () => r.cache,
@@ -98,7 +117,8 @@ void main() {
   });
 
   test('verdict text', () {
-    expect(selfTestVerdict(const [SelfTestStep('Total', true, 1, '')]), startsWith('PASS'));
+    expect(selfTestVerdict(const [SelfTestStep('Total', true, 1, '')]),
+        startsWith('PASS'));
     expect(selfTestVerdict(const []), startsWith('FAIL'));
   });
 }

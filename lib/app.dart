@@ -1,5 +1,9 @@
 import 'dart:math' as math;
 import 'widgets/noor_toast.dart';
+import 'widgets/buds_popup.dart';
+import 'services/audio_devices.dart';
+import 'services/updater.dart';
+import 'services/app_log.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -15,6 +19,51 @@ import 'screens/main_shell.dart';
 final GlobalKey<ScaffoldMessengerState> _messengerKey =
     GlobalKey<ScaffoldMessengerState>();
 final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
+
+/// Earbuds / headphones connecting or disconnecting (none in tests).
+final audioDeviceChangesProvider =
+    StreamProvider<AudioDeviceEvent>((ref) => audioDeviceChanges());
+
+/// Shows the earbuds card. Connecting buds often happens from the quick
+/// settings panel or with the phone's own buds pop-up on top, which makes
+/// Noor "inactive" for a moment: the card shows then too. Only when Noor is
+/// really in the background is it kept, and shown on coming back if that is
+/// within 20 seconds.
+final _budsAnnouncer = _BudsAnnouncer();
+
+class _BudsAnnouncer {
+  _BudsAnnouncer() {
+    _listener = AppLifecycleListener(onResume: () {
+      final p = _pending;
+      _pending = null;
+      if (p != null && DateTime.now().difference(p.$2).inSeconds <= 20) {
+        _show(p.$1);
+      }
+    });
+  }
+
+  // ignore: unused_field
+  late final AppLifecycleListener _listener;
+  (AudioDeviceEvent, DateTime)? _pending;
+
+  void announce(AudioDeviceEvent e) {
+    final state = WidgetsBinding.instance.lifecycleState;
+    nlog('[N] audio device ${e.connected ? 'connected' : 'disconnected'}: '
+        '"${e.name}"${e.wired ? ' (wired)' : ''}, app $state');
+    if (state == AppLifecycleState.resumed ||
+        state == AppLifecycleState.inactive ||
+        state == null) {
+      _show(e);
+    } else {
+      _pending = (e, DateTime.now());
+    }
+  }
+
+  void _show(AudioDeviceEvent e) {
+    final overlay = _navigatorKey.currentState?.overlay;
+    if (overlay != null) BudsPopup.showIn(overlay, e);
+  }
+}
 
 class NebulaApp extends ConsumerWidget {
   const NebulaApp({super.key});
@@ -33,6 +82,24 @@ class NebulaApp extends ConsumerWidget {
       if (n == null) return;
       final overlay = _navigatorKey.currentState?.overlay;
       if (overlay != null) NoorToast.showIn(overlay, n);
+    });
+    // Earbuds connected / disconnected while Noor is on screen: the card.
+    ref.listen<AsyncValue<AudioDeviceEvent>>(audioDeviceChangesProvider,
+        (_, next) {
+      final e = next.valueOrNull;
+      if (e != null) _budsAnnouncer.announce(e);
+    });
+    // Updates: started with the app (checks, downloads on Wi-Fi, installs
+    // when idle). Says so just before Noor restarts into the new build.
+    ref.listen<UpdateState>(updaterProvider, (prev, next) {
+      if (next.phase == UpdatePhase.installing &&
+          prev?.phase != UpdatePhase.installing) {
+        final overlay = _navigatorKey.currentState?.overlay;
+        if (overlay != null) {
+          NoorToast.showIn(
+              overlay, 'Updating Noor to build ${next.info?.build ?? ''}…');
+        }
+      }
     });
     return MaterialApp(
       title: 'Noor',

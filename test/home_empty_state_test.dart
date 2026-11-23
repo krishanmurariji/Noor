@@ -22,12 +22,19 @@ Future<void> openHome(WidgetTester t, Map<String, Object> prefs) async {
   ));
 }
 
-const _song = {'videoId': 'abcdefghijk', 'title': 'Saved Song', 'artist': 'Someone', 'thumbnailUrl': ''};
+const _song = {
+  'videoId': 'abcdefghijk',
+  'title': 'Saved Song',
+  'artist': 'Someone',
+  'thumbnailUrl': ''
+};
 
 void main() {
   const first = 'No song available';
 
-  testWidgets('new install: the three cards and "No song available", no bottom card', (t) async {
+  testWidgets(
+      'new install: the three cards and "No song available", no bottom card',
+      (t) async {
     await openHome(t, {});
     expect(find.text(first), findsNothing); // not before the library is read
     await t.pump(const Duration(milliseconds: 100));
@@ -39,12 +46,19 @@ void main() {
     expect(find.text('My Favorites'), findsNothing);
     expect(find.byIcon(Icons.favorite_rounded), findsOneWidget);
     expect(find.text('Saved Song'), findsNothing);
-    expect(find.descendant(of: find.byType(MiniPlayer), matching: find.byType(Text)), findsNothing);
+    expect(
+        find.descendant(
+            of: find.byType(MiniPlayer), matching: find.byType(Text)),
+        findsNothing);
     expect(t.takeException(), isNull);
   });
 
-  testWidgets('saved history: opens on My History, never flashes the empty message', (t) async {
-    await openHome(t, {'nebula_history': jsonEncode([_song])});
+  testWidgets(
+      'saved history: opens on My History, never flashes the empty message',
+      (t) async {
+    await openHome(t, {
+      'nebula_history': jsonEncode([_song])
+    });
     expect(find.text(first), findsNothing);
     await t.pump(const Duration(milliseconds: 100));
     expect(find.text(first), findsNothing);
@@ -53,16 +67,22 @@ void main() {
     expect(t.takeException(), isNull);
   });
 
-  testWidgets('after a restart the last played song waits, paused, in the bottom card', (t) async {
+  testWidgets(
+      'after a restart the last played song waits, paused, in the bottom card',
+      (t) async {
     await openHome(t, {'noor_last_played': jsonEncode(_song)});
     await t.pump(const Duration(milliseconds: 100));
-    expect(find.descendant(of: find.byType(MiniPlayer), matching: find.text('Saved Song')),
+    expect(
+        find.descendant(
+            of: find.byType(MiniPlayer), matching: find.text('Saved Song')),
         findsOneWidget);
     expect(t.takeException(), isNull);
   });
 
   testWidgets('tapping a side card opens it and shows its songs', (t) async {
-    final other = Map<String, Object>.from(_song)..['videoId'] = 'zzzzzzzzzzz'..['title'] = 'Loved Song';
+    final other = Map<String, Object>.from(_song)
+      ..['videoId'] = 'zzzzzzzzzzz'
+      ..['title'] = 'Loved Song';
     await openHome(t, {
       'nebula_history': jsonEncode([_song]),
       'nebula_liked': jsonEncode([other]),
@@ -78,7 +98,8 @@ void main() {
     expect(find.widgetWithText(NoorSongCard, 'Saved Song'), findsNothing);
   });
 
-  testWidgets('search opens from the icon, shows the watermark, and closes', (t) async {
+  testWidgets('search opens from the icon, shows the watermark, and closes',
+      (t) async {
     await openHome(t, {});
     await t.pump(const Duration(milliseconds: 100));
     await t.tap(find.bySemanticsLabel('Search'));
@@ -109,19 +130,30 @@ void main() {
   });
 
   test('the three default cards always come first, then every playlist', () {
-    final cats = homeCategories(liked: [], history: [], onDevice: [], playlists: [
+    final cats =
+        homeCategories(liked: [], history: [], onDevice: [], playlists: [
       const Playlist(id: 'p', name: 'Empty one'),
     ]);
-    expect(cats.map((c) => c.title), ['My History', 'My Favorites', 'My Music', 'Empty one']);
+    expect(cats.map((c) => c.title),
+        ['My History', 'My Favorites', 'My Music', 'Empty one']);
   });
 
-  test('the slider follows the order the user arranged; new playlists go last', () {
+  test('the slider follows the order the user arranged; new playlists go last',
+      () {
     final cats = homeCategories(
         liked: [],
         history: [],
         onDevice: [],
-        playlists: [const Playlist(id: 'p', name: 'Road'), const Playlist(id: 'q', name: 'New')],
-        order: ['p', 'music', 'hist', 'fav']);
+        playlists: [
+          const Playlist(id: 'p', name: 'Road'),
+          const Playlist(id: 'q', name: 'New')
+        ],
+        order: [
+          'p',
+          'music',
+          'hist',
+          'fav'
+        ]);
     expect(cats.map((c) => c.id), ['p', 'music', 'hist', 'fav', 'q']);
   });
 
@@ -134,7 +166,11 @@ void main() {
   Future<ProviderContainer> home(WidgetTester t) async {
     await openHome(t, {
       'nebula_playlists': jsonEncode([
-        {'id': 'p1', 'name': 'Road Trip', 'songs': [_song]}
+        {
+          'id': 'p1',
+          'name': 'Road Trip',
+          'songs': [_song]
+        }
       ]),
     });
     await frames(t, 10);
@@ -148,7 +184,8 @@ void main() {
     return g;
   }
 
-  testWidgets('holding a card: it stays under the finger, the others gather round it narrow',
+  testWidgets(
+      'holding a card: it stays under the finger, the others gather round it narrow',
       (t) async {
     await home(t);
     final where = t.getCenter(find.byIcon(Icons.queue_music_rounded));
@@ -173,7 +210,8 @@ void main() {
     expect(find.text('Road Trip'), findsOneWidget); // back to the open card
   });
 
-  testWidgets('drag over another card to swap places; letting go keeps it', (t) async {
+  testWidgets('drag over another card to swap places; letting go keeps it',
+      (t) async {
     final c = await home(t);
     final g = await pickUp(t, Icons.queue_music_rounded);
     await frames(t, 6);
@@ -184,10 +222,12 @@ void main() {
     expect(c.read(homeOrderProvider).first, 'p1');
   });
 
-  testWidgets('a playlist let go over the wormhole at the top is swallowed and deleted; Undo brings it back',
+  testWidgets(
+      'a playlist let go over the wormhole at the top is swallowed and deleted; Undo brings it back',
       (t) async {
     final c = await home(t);
-    expect(find.text('Drag here to delete the playlist').hitTestable(), findsNothing);
+    expect(find.text('Drag here to delete the playlist').hitTestable(),
+        findsNothing);
     final g = await pickUp(t, Icons.queue_music_rounded);
     await g.moveBy(const Offset(0, -10));
     await frames(t, 4);
@@ -213,11 +253,51 @@ void main() {
     final g = await pickUp(t, Icons.download_done_rounded);
     await g.moveBy(const Offset(0, -10));
     await frames(t, 4);
-    expect(find.text('Drag here to delete the playlist').hitTestable(), findsNothing);
+    expect(find.text('Drag here to delete the playlist').hitTestable(),
+        findsNothing);
     await g.up();
     await frames(t, 4);
   });
 
-
-
+  testWidgets(
+      'held at the edge, the slider scrolls on to its end and the card goes there',
+      (t) async {
+    await openHome(t, {
+      'nebula_playlists': jsonEncode([
+        for (var i = 0; i < 12; i++)
+          {
+            'id': 'p$i',
+            'name': 'List $i',
+            'songs': [_song]
+          }
+      ]),
+    });
+    await frames(t, 10);
+    final c = ProviderScope.containerOf(t.element(find.byType(HomeScreen)));
+    final before = [...c.read(homeOrderProvider)];
+    // Opens on the first list with songs (List 0); List 1 is beside it.
+    final g = await pickUp(t, Icons.queue_music_rounded);
+    await frames(t, 6);
+    final scroll = find.descendant(
+        of: find.byType(HomeScreen),
+        matching: find.byWidgetPredicate((w) =>
+            w is SingleChildScrollView &&
+            w.scrollDirection == Axis.horizontal));
+    final ctrl = t.widget<SingleChildScrollView>(scroll.first).controller!;
+    expect(ctrl.offset, 0);
+    // Carry it to the right edge of the screen and hold it there.
+    final y = t.getCenter(find.byIcon(Icons.queue_music_rounded).last).dy;
+    await g.moveTo(Offset(405, y));
+    for (var i = 0; i < 120; i++) {
+      await t.pump(const Duration(milliseconds: 16));
+    }
+    expect(ctrl.offset, ctrl.position.maxScrollExtent); // all the way
+    expect(ctrl.offset, greaterThan(0));
+    await g.up();
+    await frames(t, 6);
+    final order = c.read(homeOrderProvider);
+    expect(order, isNot(before));
+    expect(order.last, startsWith('p')); // a playlist went to the very end
+    expect(order.last, isNot('p11'));
+  });
 }

@@ -9,8 +9,8 @@ import 'package:noor/providers/player_provider.dart';
 import 'package:noor/widgets/song_row.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-Song song(String id, String title) =>
-    Song(videoId: id.padRight(11, 'x'), title: title, artist: 'A', thumbnailUrl: '');
+Song song(String id, String title) => Song(
+    videoId: id.padRight(11, 'x'), title: title, artist: 'A', thumbnailUrl: '');
 
 final a = song('a', 'Alpha');
 
@@ -25,7 +25,8 @@ Map<String, Object> playlists(int n, {List<Song> songsInFirst = const []}) => {
       ]),
     };
 
-class _Player extends StateNotifier<NebulaPlayerState> implements PlayerNotifier {
+class _Player extends StateNotifier<NebulaPlayerState>
+    implements PlayerNotifier {
   _Player([NebulaPlayerState s = const NebulaPlayerState()]) : super(s);
   int cleared = 0;
   @override
@@ -51,7 +52,8 @@ Future<ProviderContainer> open(WidgetTester t, Map<String, Object> prefs,
       home: Scaffold(
         body: wrap != null
             ? wrap(row)
-            : ListView(padding: const EdgeInsets.only(top: 400), children: [row]),
+            : ListView(
+                padding: const EdgeInsets.only(top: 400), children: [row]),
       ),
     ),
   ));
@@ -71,7 +73,9 @@ Future<void> swipeOpen(WidgetTester t) async {
 }
 
 void main() {
-  testWidgets('swipe left shrinks the card and shows like, add to playlist and delete', (t) async {
+  testWidgets(
+      'swipe left shrinks the card and shows like, add to playlist and delete',
+      (t) async {
     await open(t, {});
     expect(find.bySemanticsLabel('Like'), findsNothing);
     await swipeOpen(t);
@@ -81,7 +85,8 @@ void main() {
     expect(t.takeException(), isNull);
   });
 
-  testWidgets('a short drag snaps back; swipe right puts the card back', (t) async {
+  testWidgets('a short drag snaps back; swipe right puts the card back',
+      (t) async {
     await open(t, {});
     await t.drag(find.text('Alpha'), const Offset(-60, 0));
     await settle(t);
@@ -92,7 +97,8 @@ void main() {
     expect(find.bySemanticsLabel('Like'), findsNothing);
   });
 
-  testWidgets('tapping the shrunk card puts it back instead of playing', (t) async {
+  testWidgets('tapping the shrunk card puts it back instead of playing',
+      (t) async {
     var plays = 0;
     SharedPreferences.setMockInitialValues({});
     t.view.physicalSize = const Size(411, 891);
@@ -102,7 +108,8 @@ void main() {
       overrides: [playerProvider.overrideWith((ref) => _Player())],
       child: MaterialApp(
         home: Scaffold(
-          body: ListView(children: [NoorSongRow(song: a, onTap: () => plays++)]),
+          body:
+              ListView(children: [NoorSongRow(song: a, onTap: () => plays++)]),
         ),
       ),
     ));
@@ -132,7 +139,8 @@ void main() {
     expect(t.takeException(), isNull);
   });
 
-  testWidgets('a right swipe is left to whatever is behind the list', (t) async {
+  testWidgets('a right swipe is left to whatever is behind the list',
+      (t) async {
     var parentDrags = 0;
     await open(t, {},
         wrap: (row) => GestureDetector(
@@ -168,12 +176,17 @@ void main() {
     expect(find.bySemanticsLabel('Like'), findsNothing);
   });
 
-  testWidgets('deleting the playing song stops it and clears the bottom card', (t) async {
-    final p = _Player(NebulaPlayerState(song: a, status: NebulaPlayerStatus.playing));
-    final c = await open(t, {
-      'nebula_history': jsonEncode([a.toMap()]),
-      'noor_last_played': jsonEncode(a.toMap()),
-    }, player: p);
+  testWidgets('deleting the playing song stops it and clears the bottom card',
+      (t) async {
+    final p =
+        _Player(NebulaPlayerState(song: a, status: NebulaPlayerStatus.playing));
+    final c = await open(
+        t,
+        {
+          'nebula_history': jsonEncode([a.toMap()]),
+          'noor_last_played': jsonEncode(a.toMap()),
+        },
+        player: p);
     await swipeOpen(t);
     await t.tap(find.bySemanticsLabel('Remove from history'));
     await settle(t);
@@ -183,12 +196,17 @@ void main() {
     expect(c.read(historyProvider), isEmpty);
   });
 
-  testWidgets('deleting the song waiting in the bottom card after a restart clears it', (t) async {
+  testWidgets(
+      'deleting the song waiting in the bottom card after a restart clears it',
+      (t) async {
     final p = _Player();
-    final c = await open(t, {
-      'nebula_history': jsonEncode([a.toMap()]),
-      'noor_last_played': jsonEncode(a.toMap()),
-    }, player: p);
+    final c = await open(
+        t,
+        {
+          'nebula_history': jsonEncode([a.toMap()]),
+          'noor_last_played': jsonEncode(a.toMap()),
+        },
+        player: p);
     await swipeOpen(t);
     await t.tap(find.bySemanticsLabel('Remove from history'));
     await settle(t);
@@ -198,11 +216,15 @@ void main() {
 
   testWidgets('deleting another song leaves playback alone', (t) async {
     final other = song('z', 'Zeta');
-    final p = _Player(NebulaPlayerState(song: other, status: NebulaPlayerStatus.playing));
-    final c = await open(t, {
-      'nebula_history': jsonEncode([a.toMap(), other.toMap()]),
-      'noor_last_played': jsonEncode(other.toMap()),
-    }, player: p);
+    final p = _Player(
+        NebulaPlayerState(song: other, status: NebulaPlayerStatus.playing));
+    final c = await open(
+        t,
+        {
+          'nebula_history': jsonEncode([a.toMap(), other.toMap()]),
+          'noor_last_played': jsonEncode(other.toMap()),
+        },
+        player: p);
     await swipeOpen(t);
     await t.tap(find.bySemanticsLabel('Remove from history'));
     await settle(t);
@@ -218,7 +240,8 @@ void main() {
     expect(node.flagsCollection.isEnabled, isNot(true));
   });
 
-  testWidgets('the menu fans out the playlists; picking one adds the song', (t) async {
+  testWidgets('the menu fans out the playlists; picking one adds the song',
+      (t) async {
     final c = await open(t, playlists(3));
     await swipeOpen(t);
     await t.tap(find.bySemanticsLabel('Add to playlist'));
@@ -255,7 +278,8 @@ void main() {
     expect(find.bySemanticsLabel('Like'), findsOneWidget); // still open
   });
 
-  testWidgets('new playlist: name it, check, it is created with the song', (t) async {
+  testWidgets('new playlist: name it, check, it is created with the song',
+      (t) async {
     final c = await open(t, playlists(1));
     await swipeOpen(t);
     await t.tap(find.bySemanticsLabel('Add to playlist'));
@@ -341,7 +365,8 @@ void main() {
     expect(find.text('Alpha'), findsOneWidget);
   });
 
-  testWidgets('naming a card low on the screen scrolls it above the keyboard', (t) async {
+  testWidgets('naming a card low on the screen scrolls it above the keyboard',
+      (t) async {
     SharedPreferences.setMockInitialValues(playlists(1));
     t.view.physicalSize = const Size(411, 891);
     t.view.devicePixelRatio = 1.0;
@@ -356,7 +381,9 @@ void main() {
             builder: (context) => ListView(
               padding: EdgeInsets.only(
                   bottom: 120 + MediaQuery.viewInsetsOf(context).bottom),
-              children: [for (final x in songs) NoorSongRow(song: x, onTap: () {})],
+              children: [
+                for (final x in songs) NoorSongRow(song: x, onTap: () {})
+              ],
             ),
           ),
         ),

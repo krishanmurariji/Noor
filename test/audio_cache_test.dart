@@ -63,7 +63,8 @@ void main() {
     expect(c.count, 0);
   });
 
-  test('evicts least recently used first and never the protected song', () async {
+  test('evicts least recently used first and never the protected song',
+      () async {
     final c = AudioCache(dir, maxBytes: 25000);
     await c.init();
     await c.put('a', _bytes(10000));
@@ -136,7 +137,9 @@ void main() {
       expect((await again.lookup('webmsong01'))!.path, endsWith('.webm'));
     });
 
-    test('remove deletes the webm file too, and re-storing as another container leaves no twin', () async {
+    test(
+        'remove deletes the webm file too, and re-storing as another container leaves no twin',
+        () async {
       final c = AudioCache(dir);
       await c.init();
       await c.put('song000001', webm(10000));
@@ -150,7 +153,8 @@ void main() {
       expect((await c.lookup('song000002'))!.path, endsWith('.mp4'));
     });
 
-    test('index entries from the old version (no ext) still load as mp4', () async {
+    test('index entries from the old version (no ext) still load as mp4',
+        () async {
       await dir.create(recursive: true);
       File('${dir.path}/oldsong0001.mp4').writeAsBytesSync(mp4(10000));
       File('${dir.path}/index.json')

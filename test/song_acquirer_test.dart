@@ -25,7 +25,8 @@ void main() {
       expect(got.file, isNotNull);
       expect(got.file!.readAsBytesSync(), fileBytes());
       expect(r.cache.contains('dQw4w9WgXcQ'), isTrue);
-      expect(r.libraryCalls, 0, reason: 'direct worked, no need for the fallback');
+      expect(r.libraryCalls, 0,
+          reason: 'direct worked, no need for the fallback');
     });
   });
 
@@ -37,13 +38,16 @@ void main() {
     });
   });
 
-  test('both strategies fail → DownloadFailure naming both reasons; nothing cached', () async {
+  test(
+      'both strategies fail → DownloadFailure naming both reasons; nothing cached',
+      () async {
     await withRig(Rig(direct: B.status403, library: B.error), (r) async {
       await expectLater(
           r.acquire(),
           throwsA(isA<DownloadFailure>()
               .having((e) => e.client, 'client', 3)
-              .having((e) => e.cause.toString(), 'cause', allOf(contains('HTTP 403'), contains('connection reset')))));
+              .having((e) => e.cause.toString(), 'cause',
+                  allOf(contains('HTTP 403'), contains('connection reset')))));
       expect(r.cache.contains('dQw4w9WgXcQ'), isFalse);
       await r.acquirer.activeSettled().timeout(const Duration(seconds: 1));
     });
@@ -57,17 +61,22 @@ void main() {
     });
   });
 
-  test('a truncated body or a body bigger than declared is an error, never a corrupt cached song', () async {
+  test(
+      'a truncated body or a body bigger than declared is an error, never a corrupt cached song',
+      () async {
     for (final bad in [B.truncated, B.oversize]) {
       await withRig(Rig(direct: bad, library: bad), (r) async {
-        await expectLater(r.acquire(), throwsA(isA<DownloadFailure>()), reason: '$bad');
+        await expectLater(r.acquire(), throwsA(isA<DownloadFailure>()),
+            reason: '$bad');
         expect(r.cache.contains('dQw4w9WgXcQ'), isFalse, reason: '$bad');
       });
     }
   });
 
-  test('skipping mid-download abandons it quickly and caches nothing', () async {
-    await withRig(Rig(direct: B.slow, library: B.slow, slowMs: 2000), (r) async {
+  test('skipping mid-download abandons it quickly and caches nothing',
+      () async {
+    await withRig(Rig(direct: B.slow, library: B.slow, slowMs: 2000),
+        (r) async {
       final skip = Completer<void>();
       final f = r.acquire(superseded: skip.future);
       await Future<void>.delayed(const Duration(milliseconds: 100));
@@ -76,12 +85,15 @@ void main() {
       await expectLater(f, throwsA(isA<AcquireSuperseded>()));
       expect(t.elapsed, lessThan(const Duration(milliseconds: 500)));
       expect(r.cache.contains('dQw4w9WgXcQ'), isFalse);
-      expect(r.libraryCalls, 0, reason: 'a skipped song must not start the fallback downloader');
+      expect(r.libraryCalls, 0,
+          reason: 'a skipped song must not start the fallback downloader');
     });
   });
 
-  test('cancelActive() (a new load started) abandons the download too', () async {
-    await withRig(Rig(direct: B.slow, library: B.slow, slowMs: 2000), (r) async {
+  test('cancelActive() (a new load started) abandons the download too',
+      () async {
+    await withRig(Rig(direct: B.slow, library: B.slow, slowMs: 2000),
+        (r) async {
       final f = r.acquire();
       await Future<void>.delayed(const Duration(milliseconds: 100));
       r.acquirer.cancelActive();
@@ -90,7 +102,11 @@ void main() {
   });
 
   group('resolver failures keep their meaning', () {
-    for (final k in [FailureKind.rateLimited, FailureKind.network, FailureKind.permanent]) {
+    for (final k in [
+      FailureKind.rateLimited,
+      FailureKind.network,
+      FailureKind.permanent
+    ]) {
       test('$k', () async {
         await withRig(Rig(resolveKind: k), (r) async {
           await expectLater(r.acquire(),
@@ -99,22 +115,28 @@ void main() {
       });
     }
 
-    test('superseded while resolving → AcquireSuperseded, not a failure', () async {
+    test('superseded while resolving → AcquireSuperseded, not a failure',
+        () async {
       await withRig(Rig(), (r) async {
         final done = Completer<void>()..complete();
-        await expectLater(r.acquire(superseded: done.future), throwsA(isA<AcquireSuperseded>()));
+        await expectLater(r.acquire(superseded: done.future),
+            throwsA(isA<AcquireSuperseded>()));
       });
     });
   });
 
-  group('when the file cannot be played from disk the player streams the URL instead', () {
+  group(
+      'when the file cannot be played from disk the player streams the URL instead',
+      () {
     test('song larger than the in-memory limit', () async {
       await withRig(Rig(size: 5000000), (r) async {
         final got = await r.acquire();
         expect(got.file, isNull);
         expect(got.url.toString(), contains('googlevideo.com'));
-        expect(got.headers['User-Agent'], startsWith('com.google.android.youtube'),
-            reason: 'without the matching User-Agent the media server answers 403');
+        expect(
+            got.headers['User-Agent'], startsWith('com.google.android.youtube'),
+            reason:
+                'without the matching User-Agent the media server answers 403');
         expect(r.directCalls + r.libraryCalls, 0);
       });
     });
@@ -178,7 +200,8 @@ void main() {
     });
 
     test('cancelPrefetch() stops it', () async {
-      await withRig(Rig(direct: B.slow, library: B.slow, slowMs: 2000), (r) async {
+      await withRig(Rig(direct: B.slow, library: B.slow, slowMs: 2000),
+          (r) async {
         final f = r.acquirer.prefetch('dQw4w9WgXcQ');
         await Future<void>.delayed(const Duration(milliseconds: 100));
         r.acquirer.cancelPrefetch();
@@ -188,14 +211,16 @@ void main() {
     });
   });
 
-  test('CHAOS: 150 random combinations of failures always end cleanly', () async {
+  test('CHAOS: 150 random combinations of failures always end cleanly',
+      () async {
     final rnd = Random(20261109);
     const behaviours = B.values;
     for (var i = 0; i < 150; i++) {
       final d = behaviours[rnd.nextInt(behaviours.length)];
       final l = behaviours[rnd.nextInt(behaviours.length)];
       final size = [total, total, total, 0, 5000000][rnd.nextInt(5)];
-      final skipAfter = rnd.nextBool() ? null : Duration(milliseconds: rnd.nextInt(150));
+      final skipAfter =
+          rnd.nextBool() ? null : Duration(milliseconds: rnd.nextInt(150));
       final rig = Rig(direct: d, library: l, size: size, slowMs: 150);
       await withRig(rig, (r) async {
         final skip = Completer<void>();
@@ -203,7 +228,9 @@ void main() {
 
         Object? outcome;
         try {
-          outcome = await r.acquire(superseded: skip.future).timeout(const Duration(seconds: 5));
+          outcome = await r
+              .acquire(superseded: skip.future)
+              .timeout(const Duration(seconds: 5));
         } on AcquireSuperseded catch (e) {
           outcome = e;
         } on DownloadFailure catch (e) {
@@ -217,7 +244,8 @@ void main() {
         if (outcome is AcquiredSong) {
           if (outcome.file != null) {
             expect(outcome.file!.existsSync(), isTrue, reason: reason);
-            expect(outcome.file!.lengthSync(), total, reason: 'never a partial file: $reason');
+            expect(outcome.file!.lengthSync(), total,
+                reason: 'never a partial file: $reason');
           } else {
             expect(outcome.url, isNotNull, reason: reason);
           }
@@ -225,12 +253,16 @@ void main() {
           // Failure or abandon: no half-written song may be left behind.
           final cached = r.cache.contains('dQw4w9WgXcQ');
           if (outcome is! AcquiredSong && cached) {
-            expect(r.cache.fileFor('dQw4w9WgXcQ').lengthSync(), total, reason: reason);
+            expect(r.cache.fileFor('dQw4w9WgXcQ').lengthSync(), total,
+                reason: reason);
           }
         }
         await r.acquirer.activeSettled().timeout(const Duration(seconds: 2));
         // No temp files left in the cache folder.
-        final leftovers = Directory('${r.root.path}/c').listSync().whereType<File>().where((f) => f.path.endsWith('.tmp'));
+        final leftovers = Directory('${r.root.path}/c')
+            .listSync()
+            .whereType<File>()
+            .where((f) => f.path.endsWith('.tmp'));
         expect(leftovers, isEmpty, reason: reason);
       });
     }

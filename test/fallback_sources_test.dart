@@ -7,35 +7,69 @@ import 'package:noor/services/fallback_sources.dart';
 
 const _piped = {
   'audioStreams': [
-    {'url': 'https://p.example/hi', 'bitrate': 128000, 'mimeType': 'audio/mp4', 'contentLength': 5000000},
-    {'url': 'https://p.example/lo', 'bitrate': 48000, 'mimeType': 'audio/mp4', 'contentLength': 1800000},
-    {'url': 'https://p.example/webm', 'bitrate': 40000, 'mimeType': 'audio/webm', 'contentLength': 1500000},
-    {'url': 'https://p.example/vid', 'bitrate': 10, 'mimeType': 'audio/mp4', 'videoOnly': true},
+    {
+      'url': 'https://p.example/hi',
+      'bitrate': 128000,
+      'mimeType': 'audio/mp4',
+      'contentLength': 5000000
+    },
+    {
+      'url': 'https://p.example/lo',
+      'bitrate': 48000,
+      'mimeType': 'audio/mp4',
+      'contentLength': 1800000
+    },
+    {
+      'url': 'https://p.example/webm',
+      'bitrate': 40000,
+      'mimeType': 'audio/webm',
+      'contentLength': 1500000
+    },
+    {
+      'url': 'https://p.example/vid',
+      'bitrate': 10,
+      'mimeType': 'audio/mp4',
+      'videoOnly': true
+    },
   ],
 };
 
 const _invidious = {
   'adaptiveFormats': [
-    {'url': 'https://i.example/video', 'type': 'video/mp4; codecs="avc1"', 'bitrate': '100'},
-    {'url': 'https://i.example/a2', 'type': 'audio/mp4; codecs="mp4a.40.2"', 'bitrate': '130000', 'clen': '4000000'},
-    {'url': 'https://i.example/a1', 'type': 'audio/mp4; codecs="mp4a.40.5"', 'bitrate': '48000', 'clen': '1700000'},
+    {
+      'url': 'https://i.example/video',
+      'type': 'video/mp4; codecs="avc1"',
+      'bitrate': '100'
+    },
+    {
+      'url': 'https://i.example/a2',
+      'type': 'audio/mp4; codecs="mp4a.40.2"',
+      'bitrate': '130000',
+      'clen': '4000000'
+    },
+    {
+      'url': 'https://i.example/a1',
+      'type': 'audio/mp4; codecs="mp4a.40.5"',
+      'bitrate': '48000',
+      'clen': '1700000'
+    },
   ],
 };
 
 void main() {
   group('parsers', () {
-    test('Piped: lowest-bitrate mp4 audio, ignores video-only', () {
+    test('Piped: the best version, ignores video-only', () {
       final c = parsePipedStreams(_piped)!;
-      expect(c.url, 'https://p.example/lo');
+      expect(c.url, 'https://p.example/hi');
       expect(c.mimeType, 'audio/mp4');
-      expect(c.size, 1800000);
+      expect(c.size, 5000000);
     });
 
     test('Invidious: audio only, codecs stripped, string numbers parsed', () {
       final c = parseInvidiousVideo(_invidious)!;
-      expect(c.url, 'https://i.example/a1');
+      expect(c.url, 'https://i.example/a2');
       expect(c.mimeType, 'audio/mp4');
-      expect(c.size, 1700000);
+      expect(c.size, 4000000);
     });
 
     test('garbage input gives null instead of throwing', () {
@@ -65,8 +99,8 @@ void main() {
       }, ['https://pipe.example/']);
       final r = await f.fetch('abc');
       expect(r, isNotNull);
-      expect(r!.url.toString(), 'https://p.example/lo');
-      expect(r.totalBytes, 1800000);
+      expect(r!.url.toString(), 'https://p.example/hi');
+      expect(r.totalBytes, 5000000);
       expect(r.origin, 'pipe.example');
     });
 
@@ -79,10 +113,12 @@ void main() {
         return http.Response('not found', 404);
       }, ['https://inv.example']);
       final r = await f.fetch('abc');
-      expect(r!.url.toString(), 'https://i.example/a1');
+      expect(r!.url.toString(), 'https://i.example/a2');
     });
 
-    test('a dead instance is skipped, next one is used, dead one is not retried soon', () async {
+    test(
+        'a dead instance is skipped, next one is used, dead one is not retried soon',
+        () async {
       var deadCalls = 0;
       var now = DateTime(2026);
       final f = make((req) async {
@@ -106,7 +142,11 @@ void main() {
     test('missing size triggers a HEAD request', () async {
       final noSize = {
         'audioStreams': [
-          {'url': 'https://p.example/lo', 'bitrate': 48000, 'mimeType': 'audio/mp4'},
+          {
+            'url': 'https://p.example/lo',
+            'bitrate': 48000,
+            'mimeType': 'audio/mp4'
+          },
         ],
       };
       final f = make((req) async {
@@ -118,7 +158,9 @@ void main() {
       expect((await f.fetch('abc'))!.totalBytes, 999999);
     });
 
-    test('never throws; returns null when every instance fails or none configured', () async {
+    test(
+        'never throws; returns null when every instance fails or none configured',
+        () async {
       final bad = make((req) async => throw Exception('network down'),
           ['https://a.example', 'https://b.example']);
       expect(await bad.fetch('abc'), isNull);

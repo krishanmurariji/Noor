@@ -84,9 +84,10 @@ void main() {
       await openSettings(t);
       final gestures = t.getTopLeft(find.text('Gestures')).dy;
       expect(gestures, lessThan(t.getTopLeft(find.text('Library')).dy));
-      // One switch per gesture, plus "Play when Noor opens".
+      // One switch per gesture, plus "Play when Noor opens" and
+      // "Update automatically".
       expect(find.byType(NoorToggle),
-          findsNWidgets(NoorGesture.values.length + 1));
+          findsNWidgets(NoorGesture.values.length + 2));
       for (final g in NoorGesture.values) {
         expect(find.text(g.title), findsOneWidget);
       }
@@ -106,6 +107,8 @@ void main() {
 
     testWidgets('the version line shows what this build really is', (t) async {
       await openSettings(t);
+      await t.scrollUntilVisible(
+          find.byKey(const ValueKey('app-version')), 300);
       final label =
           t.widget<Text>(find.byKey(const ValueKey('app-version'))).data;
       // Tests run without the release workflow's values.

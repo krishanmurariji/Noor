@@ -70,11 +70,15 @@ class NoorSongRow extends ConsumerStatefulWidget {
     this.loading = false,
     this.expandable = false,
     this.actions = true,
+    this.holdForActions = true,
   });
 
-  /// False where a hold means something else (Up next: hold to move the
-  /// song): no swipe-left actions and no long press.
+  /// False: no swipe-left actions and no long press at all.
   final bool actions;
+
+  /// False where a hold means something else (Up next and the home lists:
+  /// hold to move the song). Swiping left still opens the actions.
+  final bool holdForActions;
 
   /// Search results: a tap on the card (not its play button) grows it to
   /// show the song's details, and a tap folds it again.
@@ -594,8 +598,11 @@ class _NoorSongRowState extends ConsumerState<NoorSongRow>
                       : (needsNet ? _needsInternet : widget.onTap),
               onPlayPause: needsNet ? _needsInternet : widget.onPlayPause,
               onToggleLike: _stage == _Stage.closed ? _toggleLike : null,
-              onLongPress:
-                  _stage == _Stage.closed && widget.actions ? _open : null,
+              onLongPress: _stage == _Stage.closed &&
+                      widget.actions &&
+                      widget.holdForActions
+                  ? _open
+                  : null,
             ),
           ),
         ),

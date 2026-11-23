@@ -12,7 +12,11 @@ import 'package:noor/screens/upnext_screen.dart';
 import 'package:noor/theme/noor_like_burst.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-Song s(String t) => Song(videoId: t.padRight(11, 'x').substring(0, 11), title: t, artist: 'A', thumbnailUrl: '');
+Song s(String t) => Song(
+    videoId: t.padRight(11, 'x').substring(0, 11),
+    title: t,
+    artist: 'A',
+    thumbnailUrl: '');
 final songs = [s('One'), s('Two'), s('Three'), s('Four')];
 
 class _P extends StateNotifier<NebulaPlayerState> implements PlayerNotifier {
@@ -40,14 +44,16 @@ void main() {
     expect(moveSongInList(songs, songs[3].videoId, 0).first.title, 'Four');
   });
 
-  testWidgets('Up next: hold a song and drag it; the list and what plays next follow',
+  testWidgets(
+      'Up next: hold a song and drag it; the list and what plays next follow',
       (t) async {
     SharedPreferences.setMockInitialValues(
         {'nebula_liked': jsonEncode(songs.map((x) => x.toMap()).toList())});
     t.view.physicalSize = const Size(411, 891);
     t.view.devicePixelRatio = 1.0;
     addTearDown(t.view.reset);
-    final p = _P(NebulaPlayerState(song: songs[0], status: NebulaPlayerStatus.paused));
+    final p = _P(
+        NebulaPlayerState(song: songs[0], status: NebulaPlayerStatus.paused));
     await t.pumpWidget(ProviderScope(
       overrides: [playerProvider.overrideWith((ref) => p)],
       child: const MaterialApp(home: UpNextScreen()),
@@ -68,46 +74,61 @@ void main() {
     await g.up();
     await frames(t, 6);
 
-    expect(c.read(likedProvider).map((x) => x.title), ['Two', 'Three', 'One', 'Four']);
+    expect(c.read(likedProvider).map((x) => x.title),
+        ['Two', 'Three', 'One', 'Four']);
     expect(p.order!.map((x) => x.title), ['Two', 'Three', 'One', 'Four']);
   });
 
-  testWidgets('swiping the bottom card up: the player rises out of it', (t) async {
+  testWidgets('swiping the bottom card up: the player rises out of it',
+      (t) async {
     SharedPreferences.setMockInitialValues({});
     t.view.physicalSize = const Size(411, 891);
     t.view.devicePixelRatio = 1.0;
     addTearDown(t.view.reset);
-    final p = _P(NebulaPlayerState(song: songs[0], status: NebulaPlayerStatus.paused));
+    final p = _P(
+        NebulaPlayerState(song: songs[0], status: NebulaPlayerStatus.paused));
     await t.pumpWidget(ProviderScope(
       overrides: [playerProvider.overrideWith((ref) => p)],
       child: const MaterialApp(
-          home: Scaffold(body: Align(alignment: Alignment.bottomCenter, child: MiniPlayer()))),
+          home: Scaffold(
+              body: Align(
+                  alignment: Alignment.bottomCenter, child: MiniPlayer()))),
     ));
     await frames(t, 2);
     await t.fling(find.text('One'), const Offset(0, -200), 1200);
     await t.pump();
     await t.pump(const Duration(milliseconds: 150));
     // Mid-way: still below its final place and a little smaller.
-    final lift = t.widget<FractionalTranslation>(find.ancestor(
-        of: find.byType(PlayerScreen), matching: find.byType(FractionalTranslation)).first);
+    final lift = t.widget<FractionalTranslation>(find
+        .ancestor(
+            of: find.byType(PlayerScreen),
+            matching: find.byType(FractionalTranslation))
+        .first);
     expect(lift.translation.dy, greaterThan(0));
     await frames(t, 6);
     expect(find.byType(PlayerScreen), findsOneWidget);
-    final done = t.widget<FractionalTranslation>(find.ancestor(
-        of: find.byType(PlayerScreen), matching: find.byType(FractionalTranslation)).first);
+    final done = t.widget<FractionalTranslation>(find
+        .ancestor(
+            of: find.byType(PlayerScreen),
+            matching: find.byType(FractionalTranslation))
+        .first);
     expect(done.translation.dy, 0);
   });
 
-  testWidgets('a double tap on the bottom card plays the shared like animation', (t) async {
+  testWidgets('a double tap on the bottom card plays the shared like animation',
+      (t) async {
     SharedPreferences.setMockInitialValues({});
     t.view.physicalSize = const Size(411, 891);
     t.view.devicePixelRatio = 1.0;
     addTearDown(t.view.reset);
-    final p = _P(NebulaPlayerState(song: songs[0], status: NebulaPlayerStatus.paused));
+    final p = _P(
+        NebulaPlayerState(song: songs[0], status: NebulaPlayerStatus.paused));
     await t.pumpWidget(ProviderScope(
       overrides: [playerProvider.overrideWith((ref) => p)],
       child: const MaterialApp(
-          home: Scaffold(body: Align(alignment: Alignment.bottomCenter, child: MiniPlayer()))),
+          home: Scaffold(
+              body: Align(
+                  alignment: Alignment.bottomCenter, child: MiniPlayer()))),
     ));
     await frames(t, 2);
     await t.tap(find.text('One'));

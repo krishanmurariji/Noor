@@ -5,8 +5,10 @@ import 'package:noor/services/connectivity_probe.dart';
 void main() {
   group('ConnectivityProbe', () {
     test('isOnline reflects the check and swallows errors', () async {
-      expect(await ConnectivityProbe(check: () async => true).isOnline(), isTrue);
-      expect(await ConnectivityProbe(check: () async => false).isOnline(), isFalse);
+      expect(
+          await ConnectivityProbe(check: () async => true).isOnline(), isTrue);
+      expect(await ConnectivityProbe(check: () async => false).isOnline(),
+          isFalse);
       expect(
           await ConnectivityProbe(check: () async => throw Exception('x'))
               .isOnline(),
