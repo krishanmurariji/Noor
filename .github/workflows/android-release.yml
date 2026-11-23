@@ -134,6 +134,13 @@ jobs:
           {
             echo "Newest build from \`${GITHUB_REF_NAME}\` @ \`${SHORT}\` (build #${{ steps.ver.outputs.number }})."
             echo
+            # The app's automatic updates only take master builds.
+            if [ "$GITHUB_REF_NAME" = "master" ]; then
+              echo "Channel: stable"
+            else
+              echo "Channel: test"
+            fi
+            echo
             if [ "$SIGNED" = "true" ]; then
               echo "Signed with the Noor release key: installs as an update over earlier builds."
             else

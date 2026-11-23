@@ -13,6 +13,7 @@ import '../services/launch_requests.dart';
 import '../services/audio_handler.dart';
 import '../services/audio_quality.dart';
 import '../services/equalizer_settings.dart';
+import '../services/updater.dart';
 import '../widgets/equalizer_sheet.dart';
 import '../providers/gesture_settings_provider.dart';
 import '../providers/library_provider.dart';
@@ -277,6 +278,28 @@ class SettingsScreen extends ConsumerWidget {
                 ]),
                 const SizedBox(height: 26),
 
+                // ── Updates ──────────────────────────────────────────────────
+                const _Section('Updates'),
+                _Card(children: [
+                  _Row(
+                    icon: Icons.system_update_alt_rounded,
+                    title: 'Update automatically',
+                    subtitle:
+                        'New versions download on Wi-Fi and install when nothing is playing',
+                    trailing: NoorToggle(
+                      value: ref.watch(updaterProvider).auto,
+                      label: 'Update automatically',
+                      onChanged: (v) =>
+                          ref.read(updaterProvider.notifier).setAuto(v),
+                    ),
+                    onTap: () => ref
+                        .read(updaterProvider.notifier)
+                        .setAuto(!ref.read(updaterProvider).auto),
+                  ),
+                  _UpdateRow(),
+                ]),
+                const SizedBox(height: 26),
+
                 // ── Help ─────────────────────────────────────────────────────
                 const _Section('Help'),
                 _Card(children: [
@@ -428,6 +451,52 @@ class _Check extends StatelessWidget {
         border: Border.all(color: on ? t.ac : t.soft, width: 1.2),
       ),
       child: on ? Icon(Icons.check_rounded, size: 14, color: t.onAc) : null,
+    );
+  }
+}
+
+/// "Check for updates": what this build is, what is available, and the one
+/// button for the next step (check / download / install / allow).
+class _UpdateRow extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final u = ref.watch(updaterProvider);
+    final n = ref.read(updaterProvider.notifier);
+    final mine =
+        n.currentBuild > 0 ? 'Build #${n.currentBuild}' : 'Development build';
+    final next = u.info?.build;
+    final (String subtitle, VoidCallback onTap) = switch (u.phase) {
+      UpdatePhase.checking => ('$mine · checking…', () {}),
+      UpdatePhase.upToDate => ('$mine · up to date', () => n.check()),
+      UpdatePhase.available => (
+          'Build #$next is available · tap to download',
+          () => n.download(u.info!).then((ok) => ok ? n.install() : null)
+        ),
+      UpdatePhase.downloading => (
+          'Downloading build #$next · ${(u.progress * 100).round()}%',
+          () {}
+        ),
+      UpdatePhase.ready => (
+          u.message ?? 'Build #$next is ready · tap to install',
+          () => n.install()
+        ),
+      UpdatePhase.installing => ('Installing build #$next…', () {}),
+      UpdatePhase.needsPermission => (
+          'Allow Noor to install updates · tap, then come back',
+          () => n.allowInstalls()
+        ),
+      UpdatePhase.failed => (
+          '${u.message ?? 'Something went wrong.'} Tap to try again',
+          () => n.check()
+        ),
+      UpdatePhase.idle => ('$mine · tap to check', () => n.check()),
+    };
+    return _Row(
+      key: const ValueKey('check-updates'),
+      icon: Icons.refresh_rounded,
+      title: 'Check for updates',
+      subtitle: subtitle,
+      onTap: onTap,
     );
   }
 }
