@@ -455,8 +455,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                       height: 44,
                       child: Row(children: [
                         const NoorLogo(),
-                        // The room lives here: listen together.
-                        const Expanded(child: Center(child: RoomCapsule())),
+                        const Spacer(),
                         NoorSearchButton(open: false, onTap: _goSearch),
                         const SizedBox(width: 8),
                         // Just the sound settings, in a panel over the
@@ -465,6 +464,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                             onTap: () => showSoundSettings(context)),
                       ]),
                     ),
+                  ),
+                  // The room: listen together (full width, under the header).
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(20, 18, 20, 0),
+                    child: RoomPill(),
                   ),
                   Expanded(
                     child: LayoutBuilder(builder: (context, box) {

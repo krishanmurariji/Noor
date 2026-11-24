@@ -474,19 +474,85 @@ class _Knocking extends ConsumerWidget {
 
 // ── In the room ───────────────────────────────────────────────────────────
 
-class _RoomHeader extends StatelessWidget {
-  const _RoomHeader({required this.room});
+/// The room's name (the star can rename it, up to five letters), its code
+/// (tap to copy) and Invite.
+class _RoomHeader extends ConsumerStatefulWidget {
+  const _RoomHeader({required this.room, this.canRename = false});
   final RoomSnapshot room;
+  final bool canRename;
+  @override
+  ConsumerState<_RoomHeader> createState() => _RoomHeaderState();
+}
+
+class _RoomHeaderState extends ConsumerState<_RoomHeader> {
+  TextEditingController? _edit;
+
+  @override
+  void dispose() {
+    _edit?.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final c = _edit;
+    if (c == null) return;
+    final name = cleanRoomName(c.text);
+    if (name.isNotEmpty && name != widget.room.name) {
+      ref.read(roomProvider.notifier).rename(name);
+    }
+    setState(() => _edit = null);
+    c.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = NoorTheme.of(context);
-    return Row(children: [
-      Expanded(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(room.name,
+    final room = widget.room;
+    final Widget name;
+    if (_edit != null) {
+      name = Row(children: [
+        Expanded(
+          child: TextField(
+            key: const ValueKey('room-rename'),
+            controller: _edit,
+            autofocus: true,
+            maxLength: kRoomNameMax,
+            textCapitalization: TextCapitalization.words,
+            onSubmitted: (_) => _save(),
+            style: noorSongTitleStyle(t.ac, size: 24),
+            decoration: const InputDecoration(
+                isDense: true, counterText: '', border: InputBorder.none),
+          ),
+        ),
+        IconButton(
+            key: const ValueKey('room-rename-save'),
+            tooltip: 'Save the name',
+            onPressed: _save,
+            icon: Icon(Icons.check_rounded, color: t.ac)),
+      ]);
+    } else {
+      name = Row(children: [
+        Flexible(
+          child: Text(room.name,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: noorSongTitleStyle(t.ac, size: 24)),
+        ),
+        if (widget.canRename)
+          IconButton(
+            key: const ValueKey('room-rename-edit'),
+            tooltip: 'Rename the room',
+            visualDensity: VisualDensity.compact,
+            onPressed: () =>
+                setState(() => _edit = TextEditingController(text: room.name)),
+            icon: Icon(Icons.edit_outlined, size: 18, color: t.mute),
+          ),
+      ]);
+    }
+    return Row(children: [
+      Expanded(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          name,
           GestureDetector(
             onTap: () {
               Clipboard.setData(ClipboardData(text: room.code));
@@ -520,6 +586,7 @@ class _Members extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final t = NoorTheme.of(context);
     final me = ref.read(roomProvider.notifier).uid;
+    final away = ref.watch(roomProvider.select((s) => s.away));
     return SizedBox(
       height: 36,
       child: ListView(scrollDirection: Axis.horizontal, children: [
@@ -538,9 +605,16 @@ class _Members extends ConsumerWidget {
                           m.uid == room.starUid ? RoomCapsule.gold : t.faint),
                 ),
                 child: Row(children: [
-                  RoomAvatar(member: m, size: 26),
+                  Opacity(
+                      opacity: away.contains(m.uid) ? 0.4 : 1,
+                      child: RoomAvatar(member: m, size: 26)),
                   const SizedBox(width: 6),
-                  Text(m.uid == me ? 'You' : m.name,
+                  Text(
+                      m.uid == me
+                          ? 'You'
+                          : away.contains(m.uid)
+                              ? '${m.name} · away'
+                              : m.name,
                       style: TextStyle(
                           color: t.ac,
                           fontSize: 12.5,
@@ -657,9 +731,18 @@ class _StarView extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const _Grip(),
-            _RoomHeader(room: room),
+            _RoomHeader(room: room, canRename: true),
             const SizedBox(height: 14),
             _Members(room: room, manage: true),
+            if (room.members.length > 1) ...[
+              const SizedBox(height: 10),
+              _Button('Sync everyone',
+                  key: const ValueKey('room-sync-all'),
+                  filled: false,
+                  height: 40,
+                  icon: Icons.sync_rounded,
+                  onTap: () => ref.read(roomProvider.notifier).syncEveryone()),
+            ],
             if (ps.displaySong?.isLocal ?? false) ...[
               const SizedBox(height: 10),
               Text("This song is on your phone, so the others can't hear it.",
@@ -770,6 +853,15 @@ class _ListenerView extends ConsumerWidget {
             _RoomHeader(room: room),
             const SizedBox(height: 14),
             _Members(room: room, manage: false),
+            const SizedBox(height: 10),
+            _Button('Sync now',
+                key: const ValueKey('room-sync'),
+                filled: false,
+                height: 40,
+                icon: Icons.sync_rounded, onTap: () {
+              n.syncNow();
+              NoorToast.show(context, 'Back in step with ${room.starName}');
+            }),
             const SizedBox(height: 14),
             Row(children: [
               const Icon(Icons.star_rounded, size: 14, color: RoomCapsule.gold),

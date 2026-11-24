@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
+
 import '../../models/song.dart';
 import '../app_log.dart';
 import 'room_store.dart';
@@ -8,6 +10,22 @@ import 'room_sync.dart';
 
 /// Most people in a room, the star included.
 const kRoomCap = 20;
+
+/// Longest room name (it sits in the pill on the player).
+const kRoomNameMax = 5;
+
+/// A member not heard from for this long shows as away…
+const kRoomAwayMs = 45000;
+
+/// …and after this long the star's phone takes them out of the room (the
+/// app was closed or the phone lost its connection).
+const kRoomGoneMs = 120000;
+
+/// A room name as stored: trimmed, at most [kRoomNameMax] letters.
+String cleanRoomName(String name) {
+  final r = name.trim().runes.toList();
+  return String.fromCharCodes(r.take(kRoomNameMax)).trim();
+}
 
 /// Room codes: six letters and digits that can't be mixed up when read
 /// aloud or typed (no 0/O, 1/I/L).
@@ -68,7 +86,11 @@ class RoomAsk {
 /// What the star is playing, as of [at] (the store's clock).
 class RoomPlay {
   const RoomPlay(this.song, this.positionMs, this.playing, this.at,
-      {this.fromPhone = false});
+      {this.fromPhone = false, this.sync = 0});
+
+  /// Goes up when the star taps "Sync everyone": every listener jumps to
+  /// the star's place.
+  final int sync;
   final Song? song;
   final int positionMs;
   final bool playing;
@@ -157,7 +179,7 @@ class RoomSnapshot {
     if (p is Map) {
       final song = p['song'] is Map ? Song.fromMap(p['song'] as Map) : null;
       play = RoomPlay(song, n(p['pos']), p['playing'] == true, n(p['at']),
-          fromPhone: p['phone'] == true);
+          fromPhone: p['phone'] == true, sync: n(p['sync']));
     }
 
     final queue = <Song>[];
@@ -206,7 +228,11 @@ class RoomState {
     this.room,
     this.knockingName,
     this.busy = false,
+    this.away = const {},
   });
+
+  /// Members not heard from for a while ([kRoomAwayMs]).
+  final Set<String> away;
 
   final RoomRole role;
   final String? code;
@@ -297,7 +323,9 @@ class RoomController {
     const now = RoomStore.serverTime;
     await store.write(_room(code), {
       'info': {
-        'name': roomName ?? "$myName's room",
+        'name': cleanRoomName(roomName ?? myName).isEmpty
+            ? 'Room'
+            : cleanRoomName(roomName ?? myName),
         'star': uid,
         'starName': myName,
         'at': now,
@@ -371,7 +399,7 @@ class RoomController {
         // Firebase stops the stream once this phone may no longer read the
         // room: removed, blocked, or the room ended.
         onError: (Object e) => _ended(code, "You're no longer in the room")));
-    _beat = Timer.periodic(const Duration(seconds: 30), (_) => _heartbeat());
+    _beat = Timer.periodic(const Duration(seconds: 15), (_) => _heartbeat());
     unawaited(() async {
       // A few readings at the start: the quickest round trip wins.
       for (var i = 0; i < 8 && _state.code == code; i++) {
@@ -388,6 +416,43 @@ class RoomController {
     try {
       await _readClock('${_room(code)}/members/$uid/seen');
     } catch (_) {/* next beat */}
+    // The star clears out phones gone for good (closed, no connection).
+    final room = _state.room;
+    if (_state.isStar && room != null && clock.ready) {
+      final now = serverNow();
+      for (final m in room.members) {
+        if (m.uid != uid && m.seen > 0 && now - m.seen > kRoomGoneMs) {
+          nlog('[R] ${m.name} gone for ${(now - m.seen) ~/ 1000}s: removed');
+          try {
+            await store.remove('${_room(code)}/members/${m.uid}');
+          } catch (_) {}
+        }
+      }
+    }
+  }
+
+  /// One heartbeat now (tests).
+  @visibleForTesting
+  Future<void> beat() => _heartbeat();
+
+  /// Rejoins [code] after the app was closed, if this phone is still in
+  /// it. False when it isn't (removed meanwhile, or the room ended).
+  Future<bool> resume(String code) async {
+    if (_state.role != RoomRole.none) return false;
+    try {
+      await store.ready();
+      final me = await store.read('${_room(code)}/members/$uid');
+      if (me is! Map) return false;
+      final info = await store.read('${_room(code)}/info');
+      if (info is! Map) return false;
+      _myName = me['name'] is String ? me['name'] as String : _myName;
+      _enter(code, info['star'] == uid ? RoomRole.star : RoomRole.listener);
+      nlog('[R] back in room $code after the app was closed');
+      return true;
+    } catch (e) {
+      nlog('[R] could not rejoin $code: $e');
+      return false;
+    }
   }
 
   void _onRoom(String code, Object? tree) {
@@ -414,7 +479,17 @@ class RoomController {
       _lastNote = note.$2;
       _events.add(RoomEvent(note.$1));
     }
-    _set(RoomState(role: role, code: code, room: room));
+    final now = serverNow();
+    _set(RoomState(
+      role: role,
+      code: code,
+      room: room,
+      away: {
+        if (clock.ready)
+          for (final m in room.members)
+            if (m.uid != uid && m.seen > 0 && now - m.seen > kRoomAwayMs) m.uid,
+      },
+    ));
   }
 
   void _announce(RoomSnapshot was, RoomSnapshot now, RoomRole role) {
@@ -549,6 +624,21 @@ class RoomController {
     });
   }
 
+  /// Renames the room (the star only; at most [kRoomNameMax] letters).
+  Future<void> rename(String name) async {
+    final n = cleanRoomName(name);
+    if (!_state.isStar || n.isEmpty) return;
+    await store.write('${_room(_code)}/info/name', n);
+  }
+
+  int _sync = 0;
+
+  /// "Sync everyone": the next [publishPlay] tells every listener to jump
+  /// to the star's place.
+  void syncEveryone() {
+    _sync = (_state.room?.play?.sync ?? _sync) + 1;
+  }
+
   /// What plays now, for everyone to follow. [at] is when [position] was
   /// read, on the store's clock ([serverNow]); without it the store stamps
   /// the write when it arrives (late by the upload time).
@@ -561,6 +651,7 @@ class RoomController {
       'pos': position.inMilliseconds,
       'playing': playing,
       'at': at ?? RoomStore.serverTime,
+      if (_sync > 0) 'sync': _sync,
     });
   }
 

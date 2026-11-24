@@ -135,6 +135,7 @@ FollowStep followStep({
   required ({String id, bool playing})? last,
   double mySpeed = 1.0,
   int leadMs = 0,
+  bool force = false,
 }) {
   final song = play.song;
   final changed = last == null ||
@@ -155,6 +156,16 @@ FollowStep followStep({
   }
   final drift = (myPosition - target).inMilliseconds;
   if (myLoading) return FollowStep(FollowKind.none, driftMs: drift);
+  if (force) {
+    // "Sync now": straight to the star's place, playing if the star is.
+    if (!play.playing) {
+      return myPlaying
+          ? FollowStep(FollowKind.pause, driftMs: drift)
+          : FollowStep(FollowKind.seek, at: target, driftMs: drift);
+    }
+    return FollowStep(myPlaying ? FollowKind.seek : FollowKind.play,
+        at: aim, driftMs: drift);
+  }
   if (!play.playing) {
     if (myPlaying) return FollowStep(FollowKind.pause, driftMs: drift);
     // Paused together: be at the same place for when it plays again.
@@ -210,7 +221,15 @@ class RoomFollower {
   /// The last measured gap to the star (ms, +: ahead).
   int? driftMs;
 
+  bool _force = false;
+  int? _syncSeen;
+
+  /// "Sync now": on the next tick, jump straight to the star's place.
+  void resync() => _force = true;
+
   void reset() {
+    _force = false;
+    _syncSeen = null;
     _last = null;
     _settleUntil = null;
     _setSpeed(1.0);
@@ -232,6 +251,9 @@ class RoomFollower {
   void tick(RoomPlay? play,
       {required int serverNow, required int nowMs, int? clockRtt}) {
     if (play == null) return;
+    // The star asked everyone to sync.
+    if (_syncSeen != null && play.sync != _syncSeen) _force = true;
+    _syncSeen = play.sync;
     final settling = _settleUntil != null && nowMs < _settleUntil!;
     final step = followStep(
       play: play,
@@ -246,7 +268,12 @@ class RoomFollower {
       mySpeed: speed,
       leadMs: leadMs,
       last: _last,
+      force: _force && !player.loading,
     );
+    if (_force && !player.loading && player.songId == play.song?.videoId) {
+      _force = false;
+      log?.call('[R] sync now: ${step.driftMs ?? '?'}ms from the star');
+    }
     driftMs = step.driftMs;
     // Just settled after a seek: how far off it landed teaches the lead.
     if (_settleUntil != null && !settling && !player.loading) {

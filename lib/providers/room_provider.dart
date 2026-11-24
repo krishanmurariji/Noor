@@ -66,6 +66,31 @@ class RoomNotifier extends StateNotifier<RoomState> {
     if (c == null) return;
     _subs.add(c.changes.listen(_onState));
     _subs.add(c.events.listen(_events.add));
+    unawaited(_resume());
+  }
+
+  static const _kRoom = 'room_code';
+
+  /// Back in the room after the app was closed (swiped away, the phone
+  /// restarted): the room is remembered until this phone leaves it.
+  Future<void> _resume() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final code = prefs.getString(_kRoom);
+      if (code == null || controller == null) return;
+      if (!await controller!.resume(code)) await prefs.remove(_kRoom);
+    } catch (_) {}
+  }
+
+  Future<void> _remember(String? code) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (code == null) {
+        await prefs.remove(_kRoom);
+      } else {
+        await prefs.setString(_kRoom, code);
+      }
+    } catch (_) {}
   }
 
   final Ref _ref;
@@ -91,6 +116,11 @@ class RoomNotifier extends StateNotifier<RoomState> {
     if (!mounted) return;
     state = s;
     if (s.role != _role) {
+      if (s.inRoom) {
+        unawaited(_remember(s.code));
+      } else if (_role == RoomRole.star || _role == RoomRole.listener) {
+        unawaited(_remember(null)); // left, removed, or the room ended
+      }
       _role = s.role;
       _publisher.failed(); // a new star sends at once
       _follower?.reset();
@@ -255,6 +285,24 @@ class RoomNotifier extends StateNotifier<RoomState> {
       _safe((c) => c.block(uid, name));
   Future<void> remove(String uid) => _safe((c) => c.remove(uid));
   Future<void> handOver(RoomMember m) => _safe((c) => c.handOver(m));
+
+  /// The star renames the room (at most [kRoomNameMax] letters).
+  Future<void> rename(String name) => _safe((c) => c.rename(name));
+
+  /// A listener: jump straight to the star's place now.
+  void syncNow() {
+    _follower?.resync();
+    _follow();
+  }
+
+  /// The star: every listener jumps to the star's place.
+  void syncEveryone() {
+    controller?.syncEveryone();
+    _publisher.failed(); // send at once
+    _publish();
+    _events.add(const RoomEvent('Syncing everyone'));
+  }
+
   Future<void> decline(RoomAsk a) => _safe((c) => c.decline(a));
 
   Future<void> acceptSong(RoomAsk a, {required bool next}) => _safe((c) async {

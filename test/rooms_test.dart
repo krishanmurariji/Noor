@@ -6,6 +6,7 @@ import 'package:noor/providers/player_provider.dart';
 import 'package:noor/providers/room_provider.dart';
 import 'package:noor/services/rooms/room.dart';
 import 'package:noor/services/rooms/room_store.dart';
+import 'package:noor/services/rooms/room_sync.dart';
 import 'package:noor/theme/noor_palette.dart';
 import 'package:noor/widgets/room_capsule.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -25,6 +26,29 @@ class _P extends StateNotifier<NebulaPlayerState> implements PlayerNotifier {
   _P() : super(const NebulaPlayerState(song: _song));
   @override
   dynamic noSuchMethod(Invocation i) => null;
+}
+
+class _FakePlayer implements FollowPlayer {
+  double pos = 35000;
+  final seeks = <Duration>[];
+  @override
+  String? get songId => _song.videoId;
+  @override
+  Duration get position => Duration(milliseconds: pos.round());
+  @override
+  bool get playing => true;
+  @override
+  bool get loading => false;
+  @override
+  void load(Song song) {}
+  @override
+  void seek(Duration to) => seeks.add(to);
+  @override
+  void play() {}
+  @override
+  void pause() {}
+  @override
+  void setSpeed(double speed) {}
 }
 
 Future<void> _settle() async {
@@ -253,6 +277,48 @@ void main() {
       expect((p as Map)['at'], now + 250);
     });
 
+    test('closed and opened again: back in the room', () async {
+      final code = await startAndLetIn();
+      rohan.dispose(); // the app was swiped away
+      final again = RoomController(MemoryRoomStore(db, 'uid-rohan'));
+      addTearDown(again.dispose);
+      expect(await again.resume(code), isTrue);
+      await _settle();
+      expect(again.state.isListener, isTrue);
+      expect(again.myName, 'Rohan');
+      // Not in it any more (removed meanwhile): no rejoining.
+      final zed = RoomController(MemoryRoomStore(db, 'uid-zaid'));
+      addTearDown(zed.dispose);
+      expect(await zed.resume(code), isFalse);
+      expect(zed.state.role, RoomRole.none);
+    });
+
+    test('a phone not heard from shows as away, then is taken out', () async {
+      var now = 5000000;
+      db.clock = () => now;
+      final star =
+          RoomController(MemoryRoomStore(db, 'uid-star'), clock: () => now);
+      final fan =
+          RoomController(MemoryRoomStore(db, 'uid-fan'), clock: () => now);
+      addTearDown(star.dispose);
+      final code = await star.start('Star');
+      await _settle();
+      await fan.knock(code, 'Fan');
+      await _settle();
+      await star.letIn(star.state.room!.knocks.single);
+      await _settle();
+      fan.dispose(); // its app was closed: no more heartbeats
+      now += kRoomAwayMs + 1000;
+      await star.beat();
+      await _settle();
+      expect(star.state.away, {'uid-fan'});
+      expect(star.state.room!.members, hasLength(2));
+      now += kRoomGoneMs;
+      await star.beat();
+      await _settle();
+      expect(star.state.room!.members.map((m) => m.name), ['Star']);
+    });
+
     test('playback and the queue go up to the room', () async {
       await startAndLetIn();
       await aanya.publishPlay(_song, const Duration(seconds: 40), true);
@@ -271,6 +337,25 @@ void main() {
   });
 
   group('following the star', () {
+    test('"Sync now" and "Sync everyone" jump straight to the star', () {
+      final p = _FakePlayer();
+      final f = RoomFollower(p);
+      RoomPlay at(int sync) => RoomPlay(_song, 30000, true, 1000, sync: sync);
+      // In step within 100 ms: left alone.
+      f.tick(at(0), serverNow: 6000, nowMs: 0);
+      p.pos = 35080;
+      f.tick(at(0), serverNow: 6000, nowMs: 500);
+      expect(p.seeks, isEmpty);
+      f.resync();
+      f.tick(at(0), serverNow: 6000, nowMs: 1000);
+      expect(p.seeks, hasLength(1));
+      // The star's "Sync everyone".
+      f.tick(at(1), serverNow: 6000, nowMs: 5000);
+      expect(p.seeks, hasLength(2));
+      f.tick(at(1), serverNow: 6000, nowMs: 9000);
+      expect(p.seeks, hasLength(2));
+    });
+
     RoomPlay play({bool playing = true, int pos = 30000, Song? song}) =>
         RoomPlay(song ?? _song, pos, playing, 1000);
 
@@ -395,7 +480,9 @@ void main() {
             home: Builder(
               builder: (context) => Scaffold(
                 backgroundColor: NoorTheme.light.bg,
-                body: const Center(child: RoomCapsule()),
+                body: const Center(
+                    child: Padding(
+                        padding: EdgeInsets.all(20), child: RoomPill())),
               ),
             ),
           ),
@@ -406,9 +493,9 @@ void main() {
       SharedPreferences.setMockInitialValues({});
       await tester.pumpWidget(app(MemoryRoomDb()));
       expect(find.bySemanticsLabel('Listen together'), findsOneWidget);
-      await tester.tap(find.byKey(const ValueKey('room-capsule')));
+      await tester.tap(find.byKey(const ValueKey('room-pill')));
       await tester.pumpAndSettle();
-      expect(find.text('Listen together'), findsOneWidget);
+      expect(find.text('Listen together'), findsNWidgets(2)); // pill + panel
       expect(find.byKey(const ValueKey('room-name')), findsOneWidget);
       // Join is off until a whole code is typed.
       await tester.enterText(find.byKey(const ValueKey('room-code')), 'k7q');
@@ -424,7 +511,7 @@ void main() {
       final db = MemoryRoomDb();
       await tester.pumpWidget(app(db));
       await tester.pump();
-      await tester.tap(find.byKey(const ValueKey('room-capsule')));
+      await tester.tap(find.byKey(const ValueKey('room-pill')));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('room-name')), findsNothing);
       await tester.tap(find.byKey(const ValueKey('room-start')));
@@ -436,9 +523,23 @@ void main() {
       await tester.pump(const Duration(milliseconds: 400));
       final code = (db.tree.value as Map)['rooms'].keys.single as String;
       expect(find.text(code), findsOneWidget);
-      expect(find.text("Aanya's room"), findsOneWidget);
+      // The room is named after the star (five letters at most): in the
+      // panel and on the pill.
+      expect(find.text('Aanya'), findsNWidgets(2));
       expect(find.text('End the room'), findsOneWidget);
-      expect(find.text('1 in the room'), findsOneWidget);
+      expect(find.text("· you're the star"), findsOneWidget);
+      // The star renames it (cut to five letters).
+      await tester.tap(find.byKey(const ValueKey('room-rename-edit')));
+      await tester.pump();
+      await tester.enterText(find.byKey(const ValueKey('room-rename')), '');
+      await tester.enterText(
+          find.byKey(const ValueKey('room-rename')), 'Sunday night');
+      await tester.runAsync(() async {
+        await tester.tap(find.byKey(const ValueKey('room-rename-save')));
+        await _settle();
+      });
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.text('Sunda'), findsNWidgets(2));
       // Leave the timers behind cleanly.
       await tester.runAsync(() async {
         await tester.tap(find.byKey(const ValueKey('room-leave')));

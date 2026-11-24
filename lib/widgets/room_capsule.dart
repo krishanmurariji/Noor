@@ -4,131 +4,195 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/room_provider.dart';
 import '../services/rooms/room.dart';
-import '../theme/noor_search_button.dart';
+import '../theme/noor_palette.dart';
+import '../theme/noor_song_card.dart';
 import 'room_sheet.dart';
 
-/// The room's place on the player: a small dark capsule in the header.
-/// Out of a room it is a dot with two listeners (tap: listen together); in
-/// a room it shows who is in it, and a gold count when people are waiting.
-class RoomCapsule extends ConsumerWidget {
-  const RoomCapsule({super.key});
-
+/// Room colours that stay the same in light and dark mode.
+class RoomCapsule {
+  RoomCapsule._();
   static const island = Color(0xFF1F1914);
-  static const ink = Color(0xFFF6EFE8);
   static const gold = Color(0xFFD8B06A);
   static const live = Color(0xFFE25A52);
+}
+
+/// The room on the player: a full-width pill under the header. The room's
+/// name on the left, who is in it on the right (three faces, then "+N"),
+/// and a count on its top-left corner when people or songs are waiting.
+/// Out of a room it offers to listen together. Tap: the room panel.
+class RoomPill extends ConsumerWidget {
+  const RoomPill({super.key});
+
+  static const height = 46.0;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final t = NoorTheme.of(context);
     final s = ref.watch(roomProvider);
     final room = s.room;
-    Widget body;
+    final me = ref.read(roomProvider.notifier).uid;
+    final List<Widget> row;
     String label;
+    var waiting = 0;
     if (s.inRoom && room != null) {
-      final count = room.members.length;
-      label = s.isStar
-          ? '$count in the room${room.waiting > 0 ? ', ${room.waiting} waiting' : ''}'
-          : 'Listening with ${room.starName}';
-      body = Row(mainAxisSize: MainAxisSize.min, children: [
-        if (s.isStar)
-          _Faces(room.members.take(3).toList())
-        else
-          Container(
-              width: 8,
-              height: 8,
-              decoration:
-                  const BoxDecoration(color: live, shape: BoxShape.circle)),
+      final here = room.members.where((m) => !s.away.contains(m.uid)).toList();
+      waiting = s.isStar ? room.waiting : 0;
+      label = 'Room ${room.name}, ${here.length} here'
+          '${waiting > 0 ? ', $waiting waiting' : ''}';
+      row = [
+        Container(
+            width: 7,
+            height: 7,
+            decoration: const BoxDecoration(
+                color: RoomCapsule.live, shape: BoxShape.circle)),
+        const SizedBox(width: 10),
+        // At most five letters: always shown whole.
+        Text(cleanRoomName(room.name),
+            maxLines: 1, style: noorSongTitleStyle(t.ac, size: 22)),
         const SizedBox(width: 8),
-        Flexible(
-          child: Text(s.isStar ? '$count in the room' : 'With ${room.starName}',
+        Expanded(
+          child: Text(
+              s.isStar ? "· you're the star" : '· with ${room.starName}',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                  color: ink, fontSize: 12.5, fontWeight: FontWeight.w600)),
+              style: TextStyle(color: t.mute, fontSize: 12)),
         ),
-        if (s.isStar && room.waiting > 0) ...[
-          const SizedBox(width: 8),
-          Container(
-            key: const ValueKey('room-waiting'),
-            constraints: const BoxConstraints(minWidth: 20),
-            height: 20,
-            padding: const EdgeInsets.symmetric(horizontal: 6),
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-                color: gold, borderRadius: BorderRadius.circular(10)),
-            child: Text('${room.waiting}',
-                style: const TextStyle(
-                    color: island, fontSize: 11, fontWeight: FontWeight.w800)),
-          ),
-        ],
-      ]);
+        const SizedBox(width: 8),
+        _Faces(
+          members: [
+            ...room.members.where((m) => m.uid == room.starUid),
+            ...room.members.where((m) => m.uid != room.starUid),
+          ],
+          away: s.away,
+          me: me,
+        ),
+      ];
     } else if (s.role == RoomRole.knocking) {
       label = 'Asking to join ${s.knockingName ?? ''}';
-      body = Row(mainAxisSize: MainAxisSize.min, children: [
+      row = [
         const _Pulse(),
-        const SizedBox(width: 8),
-        Flexible(
-          child: Text('Asking · ${s.knockingName ?? ''}',
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text('Asking to join · ${s.knockingName ?? ''}',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                  color: ink, fontSize: 12.5, fontWeight: FontWeight.w600)),
+              style: TextStyle(
+                  color: t.ac, fontSize: 13.5, fontWeight: FontWeight.w600)),
         ),
-      ]);
+      ];
     } else {
       label = 'Listen together';
-      body = const Icon(Icons.people_alt_outlined, color: gold, size: 20);
+      row = [
+        Icon(Icons.people_alt_outlined, size: 19, color: t.ac),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text('Listen together',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: noorSongTitleStyle(t.ac, size: 20)),
+        ),
+        Text('Start or join',
+            maxLines: 1, style: TextStyle(color: t.mute, fontSize: 12)),
+        Icon(Icons.chevron_right_rounded, size: 20, color: t.mute),
+      ];
     }
-    final small = !s.inRoom && s.role != RoomRole.knocking;
     return Semantics(
       button: true,
       label: label,
       excludeSemantics: true,
       child: GestureDetector(
-        key: const ValueKey('room-capsule'),
+        key: const ValueKey('room-pill'),
         behavior: HitTestBehavior.opaque,
         onTap: () {
           HapticFeedback.selectionClick();
-          showRoomSheet(context);
+          showRoomSheet(context, requests: waiting > 0);
         },
-        // Grows and shrinks with what it says (clipped to its round ends).
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(kNoorHeaderSize / 2),
-          child: AnimatedSize(
-            duration: const Duration(milliseconds: 320),
-            curve: Curves.easeOutCubic,
-            child: Container(
-              height: kNoorHeaderSize,
-              constraints: BoxConstraints(
-                  minWidth: kNoorHeaderSize,
-                  maxWidth: small ? kNoorHeaderSize : 210),
-              padding: EdgeInsets.symmetric(horizontal: small ? 0 : 12),
-              alignment: Alignment.center,
-              color: island,
-              child: body,
+        child: Stack(clipBehavior: Clip.none, children: [
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 260),
+            height: height,
+            padding: const EdgeInsets.fromLTRB(16, 0, 8, 0),
+            decoration: BoxDecoration(
+              color: t.bg,
+              borderRadius: BorderRadius.circular(height / 2),
+              border: Border.all(
+                  color: s.inRoom ? t.ac : t.soft, width: s.inRoom ? 1 : 0.8),
             ),
+            child: Row(children: row),
           ),
-        ),
+          // Waiting requests: a count on the pill's top-left corner.
+          if (waiting > 0)
+            Positioned(
+              left: -4,
+              top: -8,
+              child: Container(
+                key: const ValueKey('room-waiting'),
+                constraints: const BoxConstraints(minWidth: 22),
+                height: 22,
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: t.ac,
+                  borderRadius: BorderRadius.circular(11),
+                  border: Border.all(color: t.bg, width: 2),
+                ),
+                child: Text('$waiting',
+                    style: TextStyle(
+                        color: t.onAc,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800)),
+              ),
+            ),
+        ]),
       ),
     );
   }
 }
 
+/// Up to three faces overlapping (the star first), then "+N".
 class _Faces extends StatelessWidget {
-  const _Faces(this.members);
+  const _Faces({required this.members, required this.away, required this.me});
   final List<RoomMember> members;
+  final Set<String> away;
+  final String me;
+
+  static const size = 30.0, step = 20.0;
 
   @override
   Widget build(BuildContext context) {
+    final t = NoorTheme.of(context);
+    final shown = members.take(3).toList();
+    final more = members.length - shown.length;
+    final count = shown.length + (more > 0 ? 1 : 0);
     return SizedBox(
-      width: 20.0 + 13 * (members.length - 1).clamp(0, 2),
-      height: 22,
+      width: size + step * (count - 1),
+      height: size,
       child: Stack(children: [
-        for (var i = 0; i < members.length; i++)
+        for (var i = 0; i < shown.length; i++)
           Positioned(
-            left: 13.0 * i,
-            child: RoomAvatar(
-                member: members[i], size: 22, ring: RoomCapsule.island),
+            left: step * i,
+            child: Opacity(
+              opacity: away.contains(shown[i].uid) ? 0.4 : 1,
+              child: RoomAvatar(
+                  member: shown[i], size: size, ring: t.bg, star: i == 0),
+            ),
+          ),
+        if (more > 0)
+          Positioned(
+            left: step * shown.length,
+            child: Container(
+              width: size,
+              height: size,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: t.tint(0.12),
+                shape: BoxShape.circle,
+                border: Border.all(color: t.bg, width: 1.5),
+              ),
+              child: Text('+$more',
+                  style: TextStyle(
+                      color: t.ac, fontSize: 11, fontWeight: FontWeight.w800)),
+            ),
           ),
       ]),
     );
