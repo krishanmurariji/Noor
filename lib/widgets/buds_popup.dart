@@ -41,6 +41,23 @@ class BudsPopup {
   }
 }
 
+/// The clip, its edges fading into the card so it has no frame.
+Widget _film(ImageProvider clip) => ShaderMask(
+      blendMode: BlendMode.dstIn,
+      shaderCallback: (r) => const RadialGradient(
+        radius: 0.62,
+        colors: [Colors.white, Colors.white, Colors.transparent],
+        stops: [0, 0.62, 1],
+      ).createShader(r),
+      child: Image(
+        image: clip,
+        fit: BoxFit.cover,
+        gaplessPlayback: true,
+        filterQuality: FilterQuality.medium,
+        excludeFromSemantics: true,
+      ),
+    );
+
 class BudsCard extends StatefulWidget {
   const BudsCard({super.key, required this.event, required this.onGone});
   final AudioDeviceEvent event;
@@ -51,9 +68,18 @@ class BudsCard extends StatefulWidget {
 }
 
 class _BudsCardState extends State<BudsCard> with TickerProviderStateMixin {
-  /// The whole show: rise, buds, hold.
+  /// The whole show: the card rises, the case plays its clip, it holds.
+  /// As long as the clip (sped-up film of the case opening or closing).
+  late final int _showMs = widget.event.connected ? 5200 : 3600;
   late final AnimationController _show = AnimationController(
-      vsync: this, duration: const Duration(milliseconds: 3800));
+      vsync: this, duration: Duration(milliseconds: _showMs));
+
+  /// The clip of the case: its lid opening and the buds rising (light
+  /// white, then green), or the light turning red and the buds settling as
+  /// the lid closes. Loaded fresh each time so it always starts at the
+  /// beginning. Null until loaded (or if it cannot be): the drawn case
+  /// stands in.
+  MemoryImage? _clip;
 
   /// Leaving: the card sinks away.
   late final AnimationController _leave = AnimationController(
@@ -70,6 +96,11 @@ class _BudsCardState extends State<BudsCard> with TickerProviderStateMixin {
   void initState() {
     super.initState();
     _show.forward().whenComplete(_close);
+    final name = widget.event.connected ? 'connect' : 'disconnect';
+    rootBundle.load('assets/images/buds_$name.webp').then((data) {
+      if (mounted)
+        setState(() => _clip = MemoryImage(data.buffer.asUint8List()));
+    }).catchError((Object _) {});
   }
 
   Future<void> _close() async {
@@ -82,6 +113,8 @@ class _BudsCardState extends State<BudsCard> with TickerProviderStateMixin {
 
   @override
   void dispose() {
+    final clip = _clip;
+    if (clip != null) PaintingBinding.instance.imageCache.evict(clip);
     _show.dispose();
     _leave.dispose();
     _float.dispose();
@@ -96,22 +129,35 @@ class _BudsCardState extends State<BudsCard> with TickerProviderStateMixin {
     final e = widget.event;
     final name = e.name.isEmpty ? (e.wired ? 'Headphones' : 'Earbuds') : e.name;
 
-    final card = dark ? const Color(0xFF1F1914) : const Color(0xFFFBF8F4);
-    final ink = dark ? const Color(0xFFF6EFE8) : const Color(0xFF2B211A);
-    final mute = dark ? const Color(0xFFB9AA9A) : const Color(0xFF8A7B6C);
+    // The card takes the clip's own dark, so the film has no edge.
+    final film = _clip != null;
+    final card = film
+        ? const Color(0xFF0C0E0F)
+        : (dark ? const Color(0xFF1F1914) : const Color(0xFFFBF8F4));
+    final ink =
+        film || dark ? const Color(0xFFF2EEEA) : const Color(0xFF2B211A);
+    final mute =
+        film || dark ? const Color(0xFFA7A29C) : const Color(0xFF8A7B6C);
     const gold = Color(0xFFD8B06A);
+    // The status light's colour in the clip: green, or red.
+    final lamp = film
+        ? (e.connected ? const Color(0xFF55D17F) : const Color(0xFFE25A52))
+        : (e.connected ? gold : mute);
 
     return AnimatedBuilder(
       animation: Listenable.merge([_show, _leave, _float]),
       builder: (context, _) {
-        final t = _show.value * 3800; // ms into the show
+        final t = _show.value * _showMs; // ms into the show
         double seg(double a, double b) => ((t - a) / (b - a)).clamp(0.0, 1.0);
 
         final rise = Curves.easeOutBack.transform(seg(0, 520));
         final out = Curves.easeInCubic.transform(_leave.value);
         final shift = (1 - rise) * 320 + out * 340;
         final dim = 0.16 * seg(0, 300) * (1 - out);
-        final textIn = Curves.easeOut.transform(seg(700, 1100));
+        // "Connected" when the clip's light turns green; "Disconnected" at
+        // once (its light is red from the start).
+        final textIn = Curves.easeOut
+            .transform(film && e.connected ? seg(2300, 2700) : seg(700, 1100));
 
         return Stack(children: [
           // A light dim behind, so the card reads as floating above.
@@ -161,15 +207,17 @@ class _BudsCardState extends State<BudsCard> with TickerProviderStateMixin {
                                     fontWeight: FontWeight.w700)),
                           ),
                           Expanded(
-                            child: CustomPaint(
-                              size: Size.infinite,
-                              painter: BudsPainter(
-                                ms: t,
-                                float: _float.value,
-                                connected: e.connected,
-                                dark: dark,
-                              ),
-                            ),
+                            child: film
+                                ? _film(_clip!)
+                                : CustomPaint(
+                                    size: Size.infinite,
+                                    painter: BudsPainter(
+                                      ms: t,
+                                      float: _float.value,
+                                      connected: e.connected,
+                                      dark: dark,
+                                    ),
+                                  ),
                           ),
                           Opacity(
                             opacity: textIn,
@@ -183,7 +231,7 @@ class _BudsCardState extends State<BudsCard> with TickerProviderStateMixin {
                                     height: 7,
                                     decoration: BoxDecoration(
                                       shape: BoxShape.circle,
-                                      color: e.connected ? gold : mute,
+                                      color: lamp,
                                     ),
                                   ),
                                   const SizedBox(width: 8),
