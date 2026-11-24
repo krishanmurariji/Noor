@@ -309,12 +309,12 @@ void main() {
     test('a little behind: play faster; a little ahead: slower', () {
       final behind = at(34750);
       expect(behind.kind, FollowKind.speed);
-      expect(behind.speed, 1.05);
+      expect(behind.speed, 1.06);
       final ahead = at(35100);
       expect(ahead.kind, FollowKind.speed);
-      expect(ahead.speed, 0.96);
-      // Never more than 5 % either way.
-      expect(at(34400).speed, 1.05);
+      expect(ahead.speed, 0.95);
+      // Never more than 6 % either way.
+      expect(at(34400).speed, 1.06);
     });
 
     test('in sync: normal speed again; tiny gaps are left alone', () {

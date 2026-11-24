@@ -32,14 +32,18 @@ class RoomConfig {
 /// (kept across app starts), reads and writes, and live streams
 /// (server-sent events) that keep a copy of the tree up to date.
 class FirebaseRoomStore extends RoomStore {
-  FirebaseRoomStore(this.config, {http.Client? client})
-      : _http = client ?? http.Client();
+  FirebaseRoomStore(this.config,
+      {http.Client? client, String prefsKey = 'room_auth'})
+      : _http = client ?? http.Client(),
+        _kRefresh = '${prefsKey}_refresh',
+        _kUid = '${prefsKey}_uid';
 
   final RoomConfig config;
   final http.Client _http;
 
-  static const _kRefresh = 'room_auth_refresh';
-  static const _kUid = 'room_auth_uid';
+  // Where the sign-in is kept (tests run two members on one phone).
+  final String _kRefresh;
+  final String _kUid;
 
   String? _uid;
   String? _token;

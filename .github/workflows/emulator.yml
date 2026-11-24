@@ -47,6 +47,9 @@ jobs:
 
       - name: Run on the emulator
         uses: reactivecircus/android-emulator-runner@v2
+        env:
+          NOOR_FIREBASE_DB_URL: ${{ secrets.NOOR_FIREBASE_DB_URL }}
+          NOOR_FIREBASE_API_KEY: ${{ secrets.NOOR_FIREBASE_API_KEY }}
         with:
           api-level: 34
           arch: x86_64
@@ -66,6 +69,9 @@ jobs:
             for i in $(seq 1 30); do adb shell mkdir -p /sdcard/Music 2>/dev/null; adb push build/tone.wav "/sdcard/Music/Noor Test Tone.wav" && break; sleep 3; done
             adb shell content call --method scan_volume --uri content://media --arg external_primary || true
             timeout 900 flutter drive --driver=test_driver/integration_test.dart --target=integration_test/online_test.dart -d emulator-5554 2>&1 | tee build/online.log
+            # Rooms: a star and a listener through the real Firebase project,
+            # on the real audio stack (skipped when the settings are missing).
+            timeout 600 flutter drive --driver=test_driver/integration_test.dart --target=integration_test/room_sync_test.dart -d emulator-5554 --dart-define=NOOR_FIREBASE_DB_URL="$NOOR_FIREBASE_DB_URL" --dart-define=NOOR_FIREBASE_API_KEY="$NOOR_FIREBASE_API_KEY" 2>&1 | tee build/rooms.log
             adb shell cmd connectivity airplane-mode enable
             (for i in $(seq 1 240); do adb shell pm grant com.noor.music android.permission.READ_MEDIA_AUDIO 2>/dev/null && adb shell pm grant com.noor.music android.permission.POST_NOTIFICATIONS 2>/dev/null && echo "granted at ${i}s"; sleep 1; done) > build/grants.log 2>&1 &
             timeout 600 flutter drive --driver=test_driver/integration_test.dart --target=integration_test/offline_test.dart -d emulator-5554 2>&1 | tee build/offline.log
@@ -74,8 +80,9 @@ jobs:
             tail -3 build/grants.log || true
             # flutter drive can print "All tests passed." even when a test
             # failed or timed out, so the job decides from the test output.
-            ! grep -qE "Some tests failed|Test timed out|tests? failed" build/online.log build/offline.log
-            grep -q "All tests passed" build/online.log && grep -q "All tests passed" build/offline.log
+            grep "NOOR-E2E: room sync" build/rooms.log || true
+            ! grep -qE "Some tests failed|Test timed out|tests? failed" build/online.log build/offline.log build/rooms.log
+            grep -q "All tests passed" build/online.log && grep -q "All tests passed" build/offline.log && grep -q "All tests passed" build/rooms.log
 
       - name: Keep screenshots and the device log
         if: always()

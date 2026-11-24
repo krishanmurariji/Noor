@@ -4,6 +4,7 @@ import 'dart:math';
 import '../../models/song.dart';
 import '../app_log.dart';
 import 'room_store.dart';
+import 'room_sync.dart';
 
 /// Most people in a room, the star included.
 const kRoomCap = 20;
@@ -248,37 +249,25 @@ class RoomController {
   final List<StreamSubscription<Object?>> _subs = [];
   Timer? _beat;
   String _myName = '';
-  int _offset = 0;
   int _lastNote = 0;
   bool _leaving = false;
 
   /// The store's clock, as best this phone knows it.
-  int serverNow() => _clock() + _offset;
+  int serverNow() => clock.serverNow(_clock());
+  final ClockSync clock = ClockSync();
 
-  /// Round trip of the best clock reading so far (ms); null before one.
-  int? get clockRtt => _rtt;
-  int? _rtt;
-  int _rttAt = 0;
+  /// Round trip of the clock reading in use (ms); null before one.
+  int? get clockRtt => clock.rtt;
 
   /// True once this phone knows the store's clock well enough to stamp
   /// positions itself.
-  bool get clockReady => _rtt != null;
+  bool get clockReady => clock.ready;
 
-  /// Reads the store's clock once: writes its timestamp and halves the
-  /// round trip. Keeps the reading with the shortest round trip (the most
-  /// exact), refreshed every few minutes as phone clocks drift.
   Future<void> _readClock(String path) async {
     final before = _clock();
     final at = await store.write(path, RoomStore.serverTime);
     final after = _clock();
-    if (at is! num) return;
-    final rtt = after - before;
-    final stale = after - _rttAt > const Duration(minutes: 5).inMilliseconds;
-    if (_rtt == null || rtt <= _rtt! + 20 || stale) {
-      _offset = at.toInt() - (before + after) ~/ 2;
-      _rtt = rtt;
-      _rttAt = after;
-    }
+    if (at is num) clock.add(before, at.toInt(), after);
   }
 
   String get uid => store.uid;
@@ -385,10 +374,11 @@ class RoomController {
     _beat = Timer.periodic(const Duration(seconds: 30), (_) => _heartbeat());
     unawaited(() async {
       // A few readings at the start: the quickest round trip wins.
-      for (var i = 0; i < 4 && _state.code == code; i++) {
+      for (var i = 0; i < 8 && _state.code == code; i++) {
         await _heartbeat();
       }
-      nlog('[R] clock: offset ${_offset}ms, round trip ${_rtt ?? '?'}ms');
+      nlog(
+          '[R] clock: offset ${clock.offset}ms, round trip ${clock.rtt ?? '?'}ms');
     }());
   }
 
