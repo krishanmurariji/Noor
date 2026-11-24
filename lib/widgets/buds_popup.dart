@@ -70,7 +70,7 @@ class BudsCard extends StatefulWidget {
 class _BudsCardState extends State<BudsCard> with TickerProviderStateMixin {
   /// The whole show: the card rises, the case plays its clip, it holds.
   /// As long as the clip (sped-up film of the case opening or closing).
-  late final int _showMs = widget.event.connected ? 5200 : 3600;
+  late final int _showMs = widget.event.connected ? 5400 : 3600;
   late final AnimationController _show = AnimationController(
       vsync: this, duration: Duration(milliseconds: _showMs));
 
@@ -96,10 +96,25 @@ class _BudsCardState extends State<BudsCard> with TickerProviderStateMixin {
   void initState() {
     super.initState();
     _show.forward().whenComplete(_close);
+  }
+
+  /// The white case on its light-grey stage (light theme), or the black
+  /// case on its dark one (dark theme).
+  bool _lightFilm = false;
+  bool _loading = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_clip != null || _loading) return;
+    _loading = true;
+    _lightFilm = Theme.of(context).brightness == Brightness.light;
     final name = widget.event.connected ? 'connect' : 'disconnect';
-    rootBundle.load('assets/images/buds_$name.webp').then((data) {
-      if (mounted)
+    final file = 'assets/images/buds_$name${_lightFilm ? '_light' : ''}.webp';
+    rootBundle.load(file).then((data) {
+      if (mounted) {
         setState(() => _clip = MemoryImage(data.buffer.asUint8List()));
+      }
     }).catchError((Object _) {});
   }
 
@@ -131,13 +146,18 @@ class _BudsCardState extends State<BudsCard> with TickerProviderStateMixin {
 
     // The card takes the clip's own dark, so the film has no edge.
     final film = _clip != null;
-    final card = film
-        ? const Color(0xFF0C0E0F)
-        : (dark ? const Color(0xFF1F1914) : const Color(0xFFFBF8F4));
-    final ink =
-        film || dark ? const Color(0xFFF2EEEA) : const Color(0xFF2B211A);
-    final mute =
-        film || dark ? const Color(0xFFA7A29C) : const Color(0xFF8A7B6C);
+    final lightStage = film && _lightFilm;
+    final card = !film
+        ? (dark ? const Color(0xFF1F1914) : const Color(0xFFFBF8F4))
+        : lightStage
+            ? const Color(0xFFB2B3B3) // the white case's light-grey stage
+            : const Color(0xFF0C0E0F); // the black case's dark stage
+    final ink = lightStage || (!film && !dark)
+        ? const Color(0xFF26292B)
+        : const Color(0xFFF2EEEA);
+    final mute = lightStage
+        ? const Color(0xFF4E5355)
+        : (film || dark ? const Color(0xFFA7A29C) : const Color(0xFF8A7B6C));
     const gold = Color(0xFFD8B06A);
     // The status light's colour in the clip: green, or red.
     final lamp = film
