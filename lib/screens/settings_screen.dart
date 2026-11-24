@@ -171,32 +171,7 @@ class SettingsScreen extends ConsumerWidget {
 
               // ── Sound ────────────────────────────────────────────────────
               if (!soundOnly) const _Section('Sound'),
-              _Card(children: [
-                for (final q in SoundQuality.values)
-                  _Row(
-                    key: ValueKey('quality-${q.name}'),
-                    icon: switch (q) {
-                      SoundQuality.auto => Icons.wifi_rounded,
-                      SoundQuality.high => Icons.graphic_eq_rounded,
-                      SoundQuality.low => Icons.data_saver_on_rounded,
-                    },
-                    title: q.label,
-                    subtitle: q.detail,
-                    trailing: _Check(on: ref.watch(soundQualityProvider) == q),
-                    onTap: () => ref.read(soundQualityProvider.notifier).set(q),
-                  ),
-                _Row(
-                  icon: Icons.tune_rounded,
-                  title: 'Equalizer',
-                  subtitle:
-                      (ref.watch(systemEqualizerProvider).valueOrNull ?? false)
-                          ? 'Your phone\'s equalizer · also on the knob'
-                          : ref.watch(equalizerProvider).on
-                              ? ref.watch(equalizerProvider).preset
-                              : 'Off · also on the record player\'s knob',
-                  onTap: () => showEqualizer(context),
-                ),
-              ]),
+              const SoundSettingsCard(),
               const SizedBox(height: 26),
 
               if (!soundOnly) ...[
@@ -436,6 +411,72 @@ final soundQualityProvider =
   } catch (_) {}
   return SoundQualityNotifier(h);
 });
+
+/// Song quality and the equalizer: a section of Settings, and on its own
+/// the panel the player's settings button opens.
+class SoundSettingsCard extends ConsumerWidget {
+  const SoundSettingsCard({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return _Card(children: [
+      for (final q in SoundQuality.values)
+        _Row(
+          key: ValueKey('quality-${q.name}'),
+          icon: switch (q) {
+            SoundQuality.auto => Icons.wifi_rounded,
+            SoundQuality.high => Icons.graphic_eq_rounded,
+            SoundQuality.low => Icons.data_saver_on_rounded,
+          },
+          title: q.label,
+          subtitle: q.detail,
+          trailing: _Check(on: ref.watch(soundQualityProvider) == q),
+          onTap: () => ref.read(soundQualityProvider.notifier).set(q),
+        ),
+      _Row(
+        icon: Icons.tune_rounded,
+        title: 'Equalizer',
+        subtitle: (ref.watch(systemEqualizerProvider).valueOrNull ?? false)
+            ? 'Your phone\'s equalizer · also on the knob'
+            : ref.watch(equalizerProvider).on
+                ? ref.watch(equalizerProvider).preset
+                : 'Off · also on the record player\'s knob',
+        onTap: () => showEqualizer(context),
+      ),
+    ]);
+  }
+}
+
+/// The player's settings: a panel rising over the player with just what
+/// concerns the song playing (quality, equalizer), not the whole Settings.
+Future<void> showSoundSettings(BuildContext context) {
+  final t = NoorTheme.of(context);
+  return showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: t.bg,
+    isScrollControlled: true,
+    shape: RoundedRectangleBorder(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        side: BorderSide(color: t.ac, width: 0.8)),
+    builder: (ctx) => SafeArea(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 18),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+                color: t.soft, borderRadius: BorderRadius.circular(2)),
+          ),
+          const SizedBox(height: 14),
+          Text('Sound', style: noorSongTitleStyle(t.ac, size: 26)),
+          const SizedBox(height: 12),
+          const SoundSettingsCard(),
+        ]),
+      ),
+    ),
+  );
+}
 
 /// A round check mark for a choice in a list.
 class _Check extends StatelessWidget {

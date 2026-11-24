@@ -14,7 +14,6 @@ import '../widgets/search_filter_bar.dart';
 import '../widgets/search_filter_menu.dart';
 import '../widgets/search_suggestions.dart';
 import '../widgets/song_row.dart';
-import '../widgets/offline_pill.dart';
 import 'mini_player.dart';
 import '../theme/noor_search_button.dart';
 
@@ -304,7 +303,6 @@ class _SearchPageState extends ConsumerState<SearchPage> {
               ]),
             ),
           ),
-          const NoorOfflinePill(),
           const SizedBox(height: 8),
           Expanded(
             child: Stack(children: [

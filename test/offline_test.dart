@@ -275,13 +275,25 @@ void main() {
       expect(o.opacity, 1);
     });
 
-    testWidgets('the offline pill comes and goes with the connection',
+    testWidgets('going offline and back is said once, in the top capsule',
         (t) async {
-      final (c, _) = await pump(t, const NoorOfflinePill());
-      expect(find.text('Offline · saved songs only'), findsOneWidget);
-      c.read(connectionProvider.notifier).reportSuccess();
-      await t.pump(const Duration(milliseconds: 400));
+      final (c, _) = await pump(
+          t, const NoorOfflineAnnouncer(child: SizedBox.expand()),
+          offline: false);
       expect(find.text('Offline · saved songs only'), findsNothing);
+      c.read(connectionProvider.notifier).reportFailure();
+      await t.pump(const Duration(milliseconds: 500));
+      expect(find.text('Offline · saved songs only'), findsOneWidget);
+      for (var i = 0; i < 40; i++) {
+        await t.pump(const Duration(milliseconds: 200)); // it goes by itself
+      }
+      expect(find.text('Offline · saved songs only'), findsNothing);
+      c.read(connectionProvider.notifier).reportSuccess();
+      await t.pump(const Duration(milliseconds: 500));
+      expect(find.text('Back online'), findsOneWidget);
+      for (var i = 0; i < 20; i++) {
+        await t.pump(const Duration(milliseconds: 200));
+      }
     });
 
     testWidgets('tapping a matched offline song plays it from the matches',

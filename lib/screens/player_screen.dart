@@ -22,7 +22,6 @@ import '../theme/noor_turntable.dart';
 import '../theme/noor_widgets.dart';
 import 'search_screen.dart';
 import 'settings_screen.dart';
-import '../widgets/offline_pill.dart';
 import 'upnext_screen.dart';
 
 // ── Panel visibility state ────────────────────────────────────────────────────
@@ -448,15 +447,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                         const Spacer(),
                         NoorSearchButton(open: false, onTap: _goSearch),
                         const SizedBox(width: 8),
+                        // Just the sound settings, in a panel over the
+                        // player (Home opens the full Settings).
                         NoorSettingsButton(
-                            onTap: () => Navigator.of(context).push(
-                                MaterialPageRoute(
-                                    builder: (_) => const SettingsScreen(
-                                        soundOnly: true)))),
+                            onTap: () => showSoundSettings(context)),
                       ]),
                     ),
                   ),
-                  const NoorOfflinePill(),
                   Expanded(
                     child: LayoutBuilder(builder: (context, box) {
                       final size = min(box.maxWidth - 48, box.maxHeight - 24)

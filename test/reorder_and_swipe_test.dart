@@ -91,26 +91,23 @@ void main() {
         'Two');
   });
 
-  testWidgets('Settings from the player: only Sound', (t) async {
+  testWidgets('Settings from the player: a panel with only Sound', (t) async {
     SharedPreferences.setMockInitialValues({});
     await t.pumpWidget(ProviderScope(
         overrides: [playerProvider.overrideWith((ref) => FakePlayer())],
-        child: const MaterialApp(home: SettingsScreen(soundOnly: true))));
-    await frames(t, 2);
-    expect(find.text('Sound'), findsOneWidget); // the title
+        child: MaterialApp(
+            home: Builder(
+                builder: (context) => Scaffold(
+                    body: TextButton(
+                        onPressed: () => showSoundSettings(context),
+                        child: const Text('open')))))));
+    await t.tap(find.text('open'));
+    await frames(t, 5);
+    expect(find.text('Sound'), findsOneWidget);
     expect(find.text('High'), findsOneWidget);
     expect(find.text('Equalizer'), findsOneWidget);
     expect(find.text('Gestures'), findsNothing);
-    expect(find.text('Voice & start'), findsNothing);
-    expect(find.text('Library'), findsNothing);
-    expect(find.text('About'), findsNothing);
-
-    await t.pumpWidget(ProviderScope(
-        overrides: [playerProvider.overrideWith((ref) => FakePlayer())],
-        child: const MaterialApp(home: SettingsScreen(key: ValueKey('all')))));
-    await frames(t, 2);
-    expect(find.text('Settings'), findsOneWidget);
-    expect(find.text('Gestures'), findsOneWidget);
+    expect(find.byType(SettingsScreen), findsNothing); // not the full page
   });
 
   test('earbud events from Android', () {

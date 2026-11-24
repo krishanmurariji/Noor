@@ -12,18 +12,22 @@ import 'helpers.dart';
 void main() {
   final b = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('airplane mode: offline pill, offline search, My Music', (t) async {
+  testWidgets('airplane mode: offline pill, offline search, My Music',
+      (t) async {
     app.main();
-    expect(await waitFor(t, find.byType(NoorSearchButton), timeout: const Duration(seconds: 90)),
-        isTrue, reason: 'Home did not appear');
+    expect(
+        await waitFor(t, find.byType(NoorSearchButton),
+            timeout: const Duration(seconds: 90)),
+        isTrue,
+        reason: 'Home did not appear');
 
     expect(
         await waitFor(t, find.text('Offline · saved songs only'),
             timeout: const Duration(seconds: 40)),
         isTrue,
-        reason: 'The offline pill did not appear in airplane mode');
+        reason: 'The offline message did not appear in airplane mode');
     await shot(b, t, '05_offline_home');
-    report('offline: pill shown');
+    report('offline: message shown');
 
     // My Music with the permission granted: no permission button.
     // The slider is My History, My Favorites, My Music; Home opens on

@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'widgets/noor_toast.dart';
+import 'widgets/offline_pill.dart';
 import 'widgets/buds_popup.dart';
 import 'services/audio_devices.dart';
 import 'services/updater.dart';
@@ -143,7 +144,8 @@ class NebulaApp extends ConsumerWidget {
       themeMode: themeMode,
       theme: _light(),
       darkTheme: _dark(),
-      home: const MainShell(),
+      // Going offline / back online is said once, in the top capsule.
+      home: const NoorOfflineAnnouncer(child: MainShell()),
     );
   }
 

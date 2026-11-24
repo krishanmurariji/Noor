@@ -28,8 +28,8 @@ Future<void> idle(WidgetTester t, Duration d) async {
 bool _surfaceReady = false;
 
 /// Saves a screenshot through the driver (build/emulator_shots/<name>.png).
-Future<void> shot(IntegrationTestWidgetsFlutterBinding b, WidgetTester t,
-    String name) async {
+Future<void> shot(
+    IntegrationTestWidgetsFlutterBinding b, WidgetTester t, String name) async {
   if (!_surfaceReady) {
     await b.convertFlutterSurfaceToImage();
     _surfaceReady = true;
