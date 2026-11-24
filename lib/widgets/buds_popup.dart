@@ -53,7 +53,7 @@ class BudsCard extends StatefulWidget {
 class _BudsCardState extends State<BudsCard> with TickerProviderStateMixin {
   /// The whole show: rise, buds, hold.
   late final AnimationController _show = AnimationController(
-      vsync: this, duration: const Duration(milliseconds: 3200));
+      vsync: this, duration: const Duration(milliseconds: 3800));
 
   /// Leaving: the card sinks away.
   late final AnimationController _leave = AnimationController(
@@ -104,7 +104,7 @@ class _BudsCardState extends State<BudsCard> with TickerProviderStateMixin {
     return AnimatedBuilder(
       animation: Listenable.merge([_show, _leave, _float]),
       builder: (context, _) {
-        final t = _show.value * 3200; // ms into the show
+        final t = _show.value * 3800; // ms into the show
         double seg(double a, double b) => ((t - a) / (b - a)).clamp(0.0, 1.0);
 
         final rise = Curves.easeOutBack.transform(seg(0, 520));
@@ -140,7 +140,7 @@ class _BudsCardState extends State<BudsCard> with TickerProviderStateMixin {
                     child: BackdropFilter(
                       filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
                       child: Container(
-                        height: 286,
+                        height: 330,
                         decoration: BoxDecoration(
                           color: card.withOpacity(0.96),
                           borderRadius: BorderRadius.circular(40),
@@ -214,7 +214,12 @@ class _BudsCardState extends State<BudsCard> with TickerProviderStateMixin {
   }
 }
 
-/// The earbuds and their halo. [ms]: time into the show; [float]: 0–1 loop.
+/// The charging case and the earbuds, lit from the top left.
+///
+/// Connected: the case settles in, its lid opens, the buds rise out of their
+/// slots and float above it in a warm glow; the case's light turns gold.
+/// Disconnected: the buds sink back in, the lid closes and everything fades
+/// to grey. [ms]: time into the show; [float]: 0–1 loop.
 class BudsPainter extends CustomPainter {
   BudsPainter({
     required this.ms,
@@ -228,182 +233,388 @@ class BudsPainter extends CustomPainter {
   final bool connected;
   final bool dark;
 
-  double _seg(double a, double b) => ((ms - a) / (b - a)).clamp(0.0, 1.0);
+  double _seg(double a, double b, [Curve c = Curves.easeInOutCubic]) =>
+      c.transform(((ms - a) / (b - a)).clamp(0.0, 1.0));
 
   @override
   void paint(Canvas canvas, Size size) {
-    final c = size.center(Offset.zero);
-    final bud = math.min(size.height * 0.92, size.width * 0.26);
+    final cw = math.min(size.width * 0.46, size.height * 0.64);
+    final ch = cw * 0.74;
+    final caseCentre = Offset(size.width / 2, size.height * 0.95 - ch / 2);
 
-    // How "apart" and how visible the buds are, and the halo.
-    double apart, lift, alpha, grey, halo, turn;
+    // Where things are in the show.
+    double appear, lid, rise, grey, halo;
     if (connected) {
-      final inT = Curves.easeOutCubic.transform(_seg(180, 1050));
-      final settle = Curves.elasticOut.transform(_seg(700, 1700));
-      apart = 1.9 - 1.9 * inT; // from far out to their place
-      turn = (1 - settle) * 0.55;
-      lift = math.sin(float * 2 * math.pi) * 3 * _seg(1000, 1600);
-      alpha = Curves.easeOut.transform(_seg(180, 600));
+      appear = _seg(150, 650, Curves.easeOutBack);
+      lid = _seg(600, 1150);
+      rise = _seg(1050, 1950, Curves.easeOutCubic);
       grey = 0;
-      halo = Curves.easeOutCubic.transform(_seg(800, 1500)) *
-          (0.85 + 0.15 * math.sin(float * 2 * math.pi));
+      halo = _seg(1500, 2200) * (0.85 + 0.15 * math.sin(float * 2 * math.pi));
     } else {
-      final go = Curves.easeInOutCubic.transform(_seg(750, 1950));
-      apart = 0.55 * go;
-      turn = -0.35 * go;
-      lift = -26 * go * go;
-      alpha = Curves.easeOut.transform(_seg(150, 500)) * (1 - 0.75 * go);
-      grey = go;
-      halo = (Curves.easeOut.transform(_seg(150, 650))) * (1 - go);
+      appear = _seg(0, 450, Curves.easeOutCubic) * (1 - _seg(2500, 3300));
+      rise = 1 - _seg(700, 1500);
+      lid = 1 - _seg(1400, 1950);
+      grey = _seg(1900, 2600);
+      halo = (1 - _seg(500, 1300)) * _seg(0, 400);
     }
+    if (appear <= 0) return;
+    // The spring may overshoot for the motion; colours stay within 0–1.
+    final fade = appear.clamp(0.0, 1.0).toDouble();
+    final bob =
+        connected ? math.sin(float * 2 * math.pi) * cw * 0.012 * rise : 0.0;
 
-    // Halo: a soft warm light behind, and a thin ring.
+    canvas.save();
+    // The whole set eases in from a little lower and smaller.
+    canvas.translate(0, (1 - appear) * ch * 0.25);
+    final scale = 0.9 + 0.1 * appear;
+    canvas.translate(caseCentre.dx, caseCentre.dy);
+    canvas.scale(scale);
+    canvas.translate(-caseCentre.dx, -caseCentre.dy);
+
+    const gold = Color(0xFFD8B06A);
+    // Halo behind.
     if (halo > 0) {
-      const gold = Color(0xFFD8B06A);
+      final hc = caseCentre - Offset(0, ch * 0.95);
       canvas.drawCircle(
-          c,
-          bud * 0.95,
+          hc,
+          cw * 0.75,
           Paint()
-            ..color = gold.withOpacity((dark ? 0.22 : 0.18) * halo)
-            ..maskFilter = MaskFilter.blur(BlurStyle.normal, bud * 0.35));
-      canvas.drawCircle(
-          c,
-          bud * (0.78 + 0.08 * halo),
-          Paint()
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 1.2
-            ..color = gold.withOpacity(0.35 * halo));
+            ..shader = RadialGradient(colors: [
+              gold.withOpacity((dark ? 0.30 : 0.24) * halo),
+              gold.withOpacity(0),
+            ]).createShader(Rect.fromCircle(center: hc, radius: cw * 0.75)));
     }
 
-    final gap = bud * 0.30 + apart * bud;
-    _bud(canvas, c + Offset(-gap, -lift), bud,
-        right: false, turn: turn, alpha: alpha, grey: grey);
-    _bud(canvas, c + Offset(gap, -lift), bud,
-        right: true, turn: turn, alpha: alpha, grey: grey);
+    final body = RRect.fromRectAndRadius(
+        Rect.fromCenter(center: caseCentre, width: cw, height: ch),
+        Radius.circular(ch * 0.46));
+    final seamY = body.top + ch * 0.36;
+
+    // Shadow on the card.
+    canvas.drawOval(
+        Rect.fromCenter(
+            center: Offset(caseCentre.dx, body.bottom + ch * 0.05),
+            width: cw * 1.05,
+            height: ch * 0.16),
+        Paint()
+          ..color = Colors.black.withOpacity(0.22 * fade)
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, ch * 0.08));
+
+    // The lid, swinging back: it rises, flattens and shows its underside.
+    _lid(canvas, body, seamY, lid, grey, fade);
+
+    // The opening and the two slots.
+    if (lid > 0.02) {
+      final opening = Rect.fromCenter(
+          center: Offset(caseCentre.dx, seamY),
+          width: cw * 0.86,
+          height: ch * 0.30 * lid);
+      canvas.drawOval(
+          opening,
+          Paint()
+            ..shader = const LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Color(0xFF1E2024), Color(0xFF3C4047)],
+            ).createShader(opening));
+      for (final side in [-1.0, 1.0]) {
+        final well = Rect.fromCenter(
+            center: Offset(caseCentre.dx + side * cw * 0.2, seamY),
+            width: cw * 0.24,
+            height: ch * 0.14 * lid);
+        canvas.drawOval(well, Paint()..color = const Color(0xFF101114));
+      }
+    }
+
+    // The buds, rising out of their slots.
+    final budH = ch * 0.98;
+    for (final right in [false, true]) {
+      final side = right ? 1.0 : -1.0;
+      final inCase =
+          Offset(caseCentre.dx + side * cw * 0.2, seamY - budH * 0.02);
+      final aloft =
+          Offset(caseCentre.dx + side * cw * 0.3, body.top - budH * 0.62 + bob);
+      final at = Offset.lerp(inCase, aloft, rise)!;
+      final tilt = side * (0.05 + 0.25 * rise);
+      if (rise > 0.02 || lid > 0.3) {
+        // Inside the case the stems go down into it: nothing below its
+        // floor ever shows.
+        canvas.save();
+        canvas.clipRect(Rect.fromLTRB(-1e4, -1e4, 1e4, body.bottom - ch * 0.1));
+        _bud(canvas, at, budH,
+            right: right,
+            tilt: tilt,
+            alpha: fade,
+            grey: grey,
+            shadowBelow:
+                rise > 0.6 ? Offset(at.dx, body.top - ch * 0.02) : null);
+        canvas.restore();
+      }
+    }
+
+    // The front of the case, over the buds' lower halves while inside.
+    canvas.save();
+    canvas.clipRect(
+        Rect.fromLTRB(body.left - 2, seamY, body.right + 2, body.bottom + 2));
+    _shell(canvas, body, grey, fade);
+    canvas.restore();
+    // A thin seam where the lid meets the case.
+    canvas.drawLine(
+        Offset(body.left + ch * 0.12, seamY),
+        Offset(body.right - ch * 0.12, seamY),
+        Paint()
+          ..strokeWidth = 1
+          ..color = Colors.black.withOpacity(0.12 * fade));
+    // The status light.
+    final led = Offset(caseCentre.dx, body.top + ch * 0.62);
+    final ledOn = connected ? _seg(1300, 1700) : (1 - grey);
+    canvas.drawCircle(
+        led,
+        ch * 0.035,
+        Paint()
+          ..color = Color.lerp(const Color(0xFF9BA0A8), gold, ledOn)!
+              .withOpacity(fade));
+    if (ledOn > 0) {
+      canvas.drawCircle(
+          led,
+          ch * 0.08,
+          Paint()
+            ..color = gold.withOpacity(0.35 * ledOn * fade)
+            ..maskFilter = MaskFilter.blur(BlurStyle.normal, ch * 0.04));
+    }
+    canvas.restore();
   }
 
-  /// One earbud (the right one is the left mirrored), centred on [at],
-  /// [h] tall: a rounded head with its speaker grille and a slim stem with
-  /// a polished tip; lit from the top left, with a soft contact shadow.
+  Color _g(Color c, double grey) =>
+      Color.lerp(c, Color.lerp(c, const Color(0xFF9E9E9E), 0.7)!, grey)!;
+
+  /// The glossy white shell of the case (body).
+  void _shell(Canvas canvas, RRect body, double grey, double alpha) {
+    canvas.drawRRect(
+        body,
+        Paint()
+          ..shader = LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              _g(const Color(0xFFFFFFFF), grey),
+              _g(const Color(0xFFF1F2F4), grey),
+              _g(const Color(0xFFCFD2D8), grey),
+            ],
+            stops: const [0, 0.55, 1],
+          ).createShader(body.outerRect)
+          ..color = Colors.white.withOpacity(alpha));
+    // Light from the top left, and a soft shade on the right.
+    canvas.drawRRect(
+        body,
+        Paint()
+          ..shader = RadialGradient(
+            center: const Alignment(-0.6, -0.7),
+            radius: 1.1,
+            colors: [
+              Colors.white.withOpacity(0.7 * alpha),
+              Colors.white.withOpacity(0),
+            ],
+          ).createShader(body.outerRect));
+    canvas.drawRRect(
+        body,
+        Paint()
+          ..shader = LinearGradient(
+            colors: [
+              Colors.transparent,
+              Colors.black.withOpacity(0.10 * alpha),
+            ],
+            stops: const [0.6, 1],
+          ).createShader(body.outerRect));
+  }
+
+  /// The lid: closed it is the top of the case; opening, it swings back
+  /// (rises and flattens) and its darker underside shows.
+  void _lid(Canvas canvas, RRect body, double seamY, double open, double grey,
+      double alpha) {
+    final h = seamY - body.top;
+    final squash = 1 - 0.55 * open;
+    // Hinged at the back: it stays on the opening's far rim as it swings.
+    final lift = body.height * 0.15 * open;
+    final rect = Rect.fromLTRB(
+        body.left, seamY - lift - h * squash, body.right, seamY - lift);
+    final shape = RRect.fromRectAndCorners(rect,
+        topLeft: Radius.elliptical(body.tlRadiusX, body.tlRadiusY * squash),
+        topRight: Radius.elliptical(body.trRadiusX, body.trRadiusY * squash),
+        bottomLeft: Radius.circular(h * 0.25 * open),
+        bottomRight: Radius.circular(h * 0.25 * open));
+    canvas.drawRRect(
+        shape,
+        Paint()
+          ..shader = LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              _g(
+                  Color.lerp(
+                      const Color(0xFFFFFFFF), const Color(0xFFD9DCE1), open)!,
+                  grey),
+              _g(
+                  Color.lerp(
+                      const Color(0xFFF0F1F4), const Color(0xFFB9BDC4), open)!,
+                  grey),
+            ],
+          ).createShader(rect)
+          ..color = Colors.white.withOpacity(alpha));
+    if (open > 0.05) {
+      // The underside's dark inner rim.
+      canvas.drawRRect(
+          shape.deflate(rect.height * 0.12),
+          Paint()
+            ..color = const Color(0xFF3A3E45).withOpacity(0.55 * open * alpha));
+    }
+  }
+
+  /// One earbud, [h] tall from the top of the head to the end of the stem,
+  /// head centred near [at]. The right bud is the left one mirrored.
   void _bud(Canvas canvas, Offset at, double h,
       {required bool right,
-      required double turn,
+      required double tilt,
       required double alpha,
-      required double grey}) {
+      required double grey,
+      Offset? shadowBelow}) {
     if (alpha <= 0) return;
-    final w = h * 0.5;
+    if (shadowBelow != null) {
+      canvas.drawOval(
+          Rect.fromCenter(
+              center: shadowBelow, width: h * 0.32, height: h * 0.06),
+          Paint()
+            ..color = Colors.black.withOpacity(0.12 * alpha)
+            ..maskFilter = MaskFilter.blur(BlurStyle.normal, h * 0.04));
+    }
+    final w = h * 0.42; // head width
     canvas.save();
     canvas.translate(at.dx, at.dy);
     if (right) canvas.scale(-1, 1);
-    canvas.rotate(-0.18 + turn);
+    canvas.rotate(-tilt);
 
-    // Shadow under the bud.
-    canvas.drawOval(
-        Rect.fromCenter(
-            center: Offset(w * 0.08, h * 0.52),
-            width: w * 0.9,
-            height: h * 0.07),
-        Paint()
-          ..color = Colors.black.withOpacity(0.18 * alpha)
-          ..maskFilter = MaskFilter.blur(BlurStyle.normal, h * 0.04));
-
-    final shellTop =
-        Color.lerp(Colors.white, const Color(0xFFBDBDBD), grey * 0.6)!;
-    final shellBottom = Color.lerp(
-        const Color(0xFFD9DCE1), const Color(0xFF9E9E9E), grey * 0.6)!;
-    Paint shell(Rect r) => Paint()
-      ..shader = LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [shellTop.withOpacity(alpha), shellBottom.withOpacity(alpha)],
-      ).createShader(r);
-
-    // Stem: from under the head down to the tip, slightly angled.
-    final stemTop = Offset(w * 0.08, -h * 0.08);
-    final stemBottom = Offset(w * 0.16, h * 0.44);
-    final stemW = w * 0.30;
-    final stem = Path()
-      ..addRRect(RRect.fromRectAndRadius(
-          Rect.fromCenter(
-              center: (stemTop + stemBottom) / 2,
-              width: stemW,
-              height: (stemBottom - stemTop).distance),
-          Radius.circular(stemW / 2)));
-    canvas.save();
-    final mid = (stemTop + stemBottom) / 2;
-    canvas.translate(mid.dx, mid.dy);
-    canvas.rotate(
-        -math.atan2(stemBottom.dx - stemTop.dx, stemBottom.dy - stemTop.dy));
-    canvas.translate(-mid.dx, -mid.dy);
-    canvas.drawPath(stem, shell(stem.getBounds()));
-    // Polished tip.
-    final tipRect = Rect.fromCenter(
-        center: Offset(mid.dx, stemBottom.dy - stemW * 0.35),
-        width: stemW * 0.92,
-        height: stemW * 0.5);
+    // Stem: a polished cylinder going down from under the head.
+    final stemW = w * 0.34;
+    final stem = RRect.fromRectAndRadius(
+        Rect.fromLTWH(w * 0.02, w * 0.18, stemW, h - w * 0.62),
+        Radius.circular(stemW / 2));
     canvas.drawRRect(
-        RRect.fromRectAndRadius(tipRect, Radius.circular(stemW * 0.3)),
+        stem,
         Paint()
           ..shader = LinearGradient(colors: [
-            const Color(0xFFE9EBEE).withOpacity(alpha),
-            const Color(0xFFB4B8BF).withOpacity(alpha),
-          ]).createShader(tipRect));
-    // A soft highlight along the stem.
-    canvas.drawLine(
-        Offset(mid.dx - stemW * 0.22, stemTop.dy + stemW * 0.6),
-        Offset(mid.dx - stemW * 0.22, stemBottom.dy - stemW * 0.9),
+            _g(const Color(0xFFB4B9C1), grey),
+            _g(const Color(0xFFF3F4F6), grey),
+            _g(const Color(0xFFFFFFFF), grey),
+            _g(const Color(0xFFDDE0E5), grey),
+            _g(const Color(0xFFA3A8B1), grey),
+          ], stops: const [
+            0,
+            0.22,
+            0.4,
+            0.72,
+            1
+          ]).createShader(stem.outerRect)
+          ..color = Colors.white.withOpacity(alpha));
+    // Metal cap at the end.
+    final cap = Rect.fromLTWH(
+        stem.left, stem.bottom - stemW * 0.55, stemW, stemW * 0.55);
+    canvas.drawRRect(
+        RRect.fromRectAndCorners(cap,
+            bottomLeft: Radius.circular(stemW / 2),
+            bottomRight: Radius.circular(stemW / 2)),
         Paint()
-          ..strokeWidth = stemW * 0.12
-          ..strokeCap = StrokeCap.round
-          ..color = Colors.white.withOpacity(0.7 * alpha));
-    canvas.restore();
-
-    // Head: a rounded body, wider than the stem.
-    final headC = Offset(-w * 0.02, -h * 0.22);
-    final headRect =
-        Rect.fromCenter(center: headC, width: w * 0.98, height: w * 0.88);
+          ..shader = LinearGradient(colors: [
+            const Color(0xFF8D929B).withOpacity(alpha),
+            const Color(0xFFE4E6EA).withOpacity(alpha),
+            const Color(0xFF9AA0A8).withOpacity(alpha),
+          ]).createShader(cap));
+    // Where the stem meets the head: a soft contact shade.
     canvas.drawOval(
-        headRect.shift(Offset(0, h * 0.012)),
+        Rect.fromCenter(
+            center: Offset(stem.center.dx, w * 0.22),
+            width: stemW * 1.3,
+            height: w * 0.12),
         Paint()
           ..color = Colors.black.withOpacity(0.10 * alpha)
-          ..maskFilter = MaskFilter.blur(BlurStyle.normal, h * 0.02));
-    canvas.drawOval(headRect, shell(headRect));
-    // Ear tip: a softer, slightly darker cap on the inner side.
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, w * 0.03));
+
+    // Head: a glossy sphere, a little wider than tall.
+    final head = Rect.fromCenter(
+        center: Offset(-w * 0.04, -w * 0.12), width: w, height: w * 0.88);
+    canvas.drawOval(
+        head,
+        Paint()
+          ..shader = RadialGradient(
+            center: const Alignment(-0.35, -0.45),
+            radius: 0.95,
+            colors: [
+              _g(const Color(0xFFFFFFFF), grey),
+              _g(const Color(0xFFF4F5F7), grey),
+              _g(const Color(0xFFD4D7DD), grey),
+              _g(const Color(0xFFA6ABB4), grey),
+            ],
+            stops: const [0, 0.38, 0.78, 1],
+          ).createShader(head)
+          ..color = Colors.white.withOpacity(alpha));
+    // Light bouncing up onto the lower right edge.
+    canvas.drawArc(
+        head.deflate(w * 0.03),
+        0.2,
+        1.4,
+        false,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = w * 0.05
+          ..color = Colors.white.withOpacity(0.45 * alpha)
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, w * 0.025));
+    // Silicone ear tip on the inner side, soft and slightly translucent.
     final tip = Rect.fromCenter(
-        center: headC + Offset(-w * 0.34, w * 0.02),
+        center: head.centerLeft + Offset(w * 0.06, w * 0.05),
         width: w * 0.42,
         height: w * 0.5);
     canvas.drawOval(
         tip,
         Paint()
-          ..shader = RadialGradient(colors: [
-            Color.lerp(const Color(0xFFF2F3F5), const Color(0xFFBDBDBD),
-                    grey * 0.6)!
-                .withOpacity(alpha),
-            Color.lerp(const Color(0xFFC9CDD3), const Color(0xFF9E9E9E),
-                    grey * 0.6)!
-                .withOpacity(alpha),
-          ]).createShader(tip));
-    // Speaker grille: a dark slot near the tip.
-    final grille = Rect.fromCenter(
-        center: headC + Offset(-w * 0.12, -w * 0.18),
-        width: w * 0.26,
-        height: w * 0.09);
-    canvas.drawRRect(RRect.fromRectAndRadius(grille, Radius.circular(w * 0.05)),
-        Paint()..color = const Color(0xFF2E3136).withOpacity(0.85 * alpha));
-    // Sensor dot.
-    canvas.drawCircle(headC + Offset(w * 0.22, w * 0.12), w * 0.035,
-        Paint()..color = const Color(0xFF4A4E55).withOpacity(0.7 * alpha));
-    // Light on the head.
+          ..shader = RadialGradient(
+            center: const Alignment(-0.3, -0.3),
+            colors: [
+              _g(const Color(0xFFF7F7F8), grey).withOpacity(alpha),
+              _g(const Color(0xFFC7CBD1), grey).withOpacity(alpha),
+            ],
+          ).createShader(tip));
     canvas.drawOval(
         Rect.fromCenter(
-            center: headC + Offset(-w * 0.05, -w * 0.24),
-            width: w * 0.5,
-            height: w * 0.16),
+            center: tip.center,
+            width: tip.width * 0.36,
+            height: tip.height * 0.4),
+        Paint()..color = const Color(0xFF8F949C).withOpacity(0.55 * alpha));
+    // Speaker grille: a dark slot with a lit lower lip.
+    final grille = RRect.fromRectAndRadius(
+        Rect.fromCenter(
+            center: head.center + Offset(w * 0.08, -w * 0.2),
+            width: w * 0.3,
+            height: w * 0.08),
+        Radius.circular(w * 0.04));
+    canvas.drawRRect(grille,
+        Paint()..color = const Color(0xFF26292E).withOpacity(0.9 * alpha));
+    canvas.drawLine(
+        grille.outerRect.bottomLeft + Offset(w * 0.03, w * 0.012),
+        grille.outerRect.bottomRight - Offset(w * 0.03, -w * 0.012),
         Paint()
-          ..color = Colors.white.withOpacity(0.85 * alpha)
-          ..maskFilter = MaskFilter.blur(BlurStyle.normal, w * 0.04));
-
+          ..strokeWidth = w * 0.012
+          ..color = Colors.white.withOpacity(0.7 * alpha));
+    // Sensor.
+    canvas.drawCircle(head.center + Offset(w * 0.28, w * 0.12), w * 0.03,
+        Paint()..color = const Color(0xFF3E4248).withOpacity(0.75 * alpha));
+    // Specular highlight.
+    canvas.drawOval(
+        Rect.fromCenter(
+            center: head.center + Offset(-w * 0.18, -w * 0.22),
+            width: w * 0.26,
+            height: w * 0.12),
+        Paint()
+          ..color = Colors.white.withOpacity(0.9 * alpha)
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, w * 0.03));
     canvas.restore();
   }
 
