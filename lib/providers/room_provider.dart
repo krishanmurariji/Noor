@@ -91,11 +91,14 @@ class RoomNotifier extends StateNotifier<RoomState> {
       _role = s.role;
       _published = null;
       _followed = null;
+      _settleUntil = null;
+      _setSpeed(1.0);
       _tick?.cancel();
       _tick = null;
       _lockPlayer(s.isListener);
       if (s.inRoom) {
-        _tick = Timer.periodic(const Duration(seconds: 1), (_) => _step());
+        _tick =
+            Timer.periodic(const Duration(milliseconds: 500), (_) => _step());
         _step();
       }
     } else if (s.inRoom) {
@@ -156,7 +159,8 @@ class RoomNotifier extends StateNotifier<RoomState> {
     if (!due) {
       final expected =
           last.pos + (playing ? now.difference(last.at).inMilliseconds : 0);
-      due = (pos.inMilliseconds - expected).abs() > 1500; // a seek
+      // A seek, or the song stalled to buffer: everyone needs the new place.
+      due = (pos.inMilliseconds - expected).abs() > 300;
     }
     if (due) {
       _published = (
@@ -165,7 +169,11 @@ class RoomNotifier extends StateNotifier<RoomState> {
         pos: pos.inMilliseconds,
         at: now
       );
-      unawaited(c.publishPlay(song, pos, playing).catchError((Object e) {
+      // Stamped with when the position was read (not when it reaches the
+      // store, which is late by the upload time).
+      final at = c.clockReady ? c.serverNow() : null;
+      unawaited(
+          c.publishPlay(song, pos, playing, at: at).catchError((Object e) {
         nlog('[R] publishing playback: $e');
         _published = null;
       }));
@@ -187,46 +195,100 @@ class RoomNotifier extends StateNotifier<RoomState> {
   /// The star's playback as last applied here.
   ({String id, bool playing})? _followed;
 
+  /// How far ahead to aim a seek so the song lands in place once the
+  /// player has actually moved there (learned on this phone).
+  int _leadMs = 150;
+
+  /// After a seek: wait until then before measuring again; [_seekedTo] is
+  /// what it aimed for.
+  DateTime? _settleUntil;
+  double _speed = 1.0;
+  DateTime _lastLog = DateTime.fromMillisecondsSinceEpoch(0);
+
+  void _setSpeed(double x) {
+    if ((x - _speed).abs() < 0.001) return;
+    _speed = x;
+    final h = _handler;
+    if (h != null) unawaited(h.player.setSpeed(x).catchError((_) {}));
+  }
+
+  void _seekTo(NebulaAudioHandler h, Duration at) {
+    _setSpeed(1.0);
+    _settleUntil = DateTime.now().add(const Duration(milliseconds: 1500));
+    unawaited(h.seek(at));
+  }
+
   void _follow() {
     final h = _handler;
     final c = controller;
     final play = state.room?.play;
     if (h == null || c == null || play == null) return;
+    final now = DateTime.now();
+    final settling = _settleUntil != null && now.isBefore(_settleUntil!);
+    final myLoading =
+        _ref.read(playerProvider).status == NebulaPlayerStatus.loading;
     final step = followStep(
       play: play,
       serverNow: c.serverNow(),
       mine: h.currentSong,
       myPosition: h.player.position,
       myPlaying: h.player.playing,
-      myLoading: _ref.read(playerProvider).status == NebulaPlayerStatus.loading,
+      myLoading: myLoading || settling,
+      mySpeed: _speed,
+      leadMs: _leadMs,
       last: _followed,
     );
-    if (step.kind != FollowKind.none) {
+    // Just settled after a seek: how far off it landed teaches the lead.
+    if (_settleUntil != null && !settling && !myLoading) {
+      _settleUntil = null;
+      final d = step.driftMs;
+      if (d != null && d.abs() < 3000) {
+        _leadMs = (_leadMs - (d * 0.8).round()).clamp(0, 1500);
+        nlog('[R] sync: landed ${d > 0 ? '+' : ''}${d}ms off, '
+            'seek lead now ${_leadMs}ms');
+      }
+    }
+    if (step.driftMs != null &&
+        now.difference(_lastLog) > const Duration(seconds: 6)) {
+      _lastLog = now;
+      nlog('[R] sync: ${step.driftMs! > 0 ? '+' : ''}${step.driftMs}ms '
+          'from the star, speed ${_speed.toStringAsFixed(3)}, '
+          'clock ±${(c.clockRtt ?? 0) ~/ 2}ms');
+    }
+    if (step.kind != FollowKind.none && step.kind != FollowKind.speed) {
       nlog('[R] follow: ${step.kind.name}'
-          '${step.at == null ? '' : ' @${step.at!.inSeconds}s'}');
+          '${step.at == null ? '' : ' @${step.at!.inMilliseconds}ms'}');
     }
     _followed = (id: play.song?.videoId ?? '', playing: play.playing);
     switch (step.kind) {
       case FollowKind.none:
         break;
+      case FollowKind.speed:
+        _setSpeed(step.speed);
+        break;
       case FollowKind.load:
+        _setSpeed(1.0);
         unawaited(h.playSong(step.song!, queue: [step.song!]).then((_) async {
           final again = state.room?.play;
           if (again == null || again.song?.videoId != step.song!.videoId) {
             return;
           }
-          await h.seek(again.positionAt(c.serverNow()));
+          _seekTo(
+              h,
+              again.positionAt(c.serverNow()) +
+                  Duration(milliseconds: _leadMs));
           if (!again.playing) await h.pause();
         }));
         break;
       case FollowKind.seek:
-        unawaited(h.seek(step.at!));
+        _seekTo(h, step.at!);
         break;
       case FollowKind.play:
-        if (step.at != null) unawaited(h.seek(step.at!));
+        if (step.at != null) _seekTo(h, step.at!);
         unawaited(h.play());
         break;
       case FollowKind.pause:
+        _setSpeed(1.0);
         unawaited(h.pause());
         break;
     }
@@ -329,24 +391,43 @@ class RoomNotifier extends StateNotifier<RoomState> {
   }
 }
 
-enum FollowKind { none, load, seek, play, pause }
+enum FollowKind { none, load, seek, play, pause, speed }
 
 class FollowStep {
-  const FollowStep(this.kind, {this.song, this.at});
+  const FollowStep(this.kind,
+      {this.song, this.at, this.speed = 1.0, this.driftMs});
   final FollowKind kind;
   final Song? song;
   final Duration? at;
+
+  /// For [FollowKind.speed]: the playback speed to use (1.0 = normal).
+  final double speed;
+
+  /// This phone minus the star, in ms (+: ahead), when both play the same
+  /// song.
+  final int? driftMs;
   static const none = FollowStep(FollowKind.none);
 }
 
-/// How far apart this phone and the star may drift before it seeks.
-const kRoomDriftMs = 2000;
+/// Further apart than this, a listener jumps (seeks) to the star's place.
+const kRoomSeekMs = 700;
+
+/// Closer than [kRoomSeekMs] but more than this, it plays a little faster
+/// or slower until it's back with the star (no audible jump).
+const kRoomNudgeMs = 35;
+
+/// Back within this, normal speed again.
+const kRoomInSyncMs = 12;
+
+/// The most a listener speeds up or slows down (5 %).
+const kRoomMaxNudge = 0.05;
 
 /// What a listener's player should do to match the star's [play].
 ///
 /// [last] is the star's song and play/pause as last applied here: a
 /// listener may pause on their own, and that holds until the star changes
-/// something (pauses, plays or picks another song).
+/// something (pauses, plays or picks another song). [leadMs] is how far
+/// ahead to aim a seek (a seek lands late by about that much).
 FollowStep followStep({
   required RoomPlay play,
   required int serverNow,
@@ -355,6 +436,8 @@ FollowStep followStep({
   required bool myPlaying,
   required bool myLoading,
   required ({String id, bool playing})? last,
+  double mySpeed = 1.0,
+  int leadMs = 0,
 }) {
   final song = play.song;
   final changed = last == null ||
@@ -366,23 +449,43 @@ FollowStep followStep({
         : FollowStep.none;
   }
   final target = play.positionAt(serverNow);
+  final aim = target + Duration(milliseconds: leadMs);
   if (mine?.videoId != song.videoId) {
     // A new song (or one this phone dropped): only when the star changed
     // it, or this phone isn't loading something already.
     if (myLoading && !changed) return FollowStep.none;
     return FollowStep(FollowKind.load, song: song, at: target);
   }
-  if (myLoading) return FollowStep.none;
-  final drift = (myPosition - target).inMilliseconds.abs();
+  final drift = (myPosition - target).inMilliseconds;
+  if (myLoading) return FollowStep(FollowKind.none, driftMs: drift);
   if (changed) {
     if (play.playing && !myPlaying) {
       return FollowStep(FollowKind.play,
-          at: drift > kRoomDriftMs ? target : null);
+          at: drift.abs() > kRoomNudgeMs ? aim : null, driftMs: drift);
     }
-    if (!play.playing && myPlaying) return const FollowStep(FollowKind.pause);
+    if (!play.playing && myPlaying) {
+      return FollowStep(FollowKind.pause, driftMs: drift);
+    }
   }
-  if (play.playing && myPlaying && drift > kRoomDriftMs) {
-    return FollowStep(FollowKind.seek, at: target);
+  if (!play.playing || !myPlaying) {
+    return FollowStep(FollowKind.none, driftMs: drift);
   }
-  return FollowStep.none;
+  if (drift.abs() > kRoomSeekMs) {
+    return FollowStep(FollowKind.seek, at: aim, driftMs: drift);
+  }
+  // Small gaps close smoothly: ahead → a little slower, behind → faster,
+  // in proportion (a 250 ms gap closes in about 5 s, at most 5 % off).
+  double want;
+  if (drift.abs() <= kRoomInSyncMs) {
+    want = 1.0;
+  } else if (drift.abs() > kRoomNudgeMs || mySpeed != 1.0) {
+    want = 1.0 - (drift / 2500).clamp(-kRoomMaxNudge, kRoomMaxNudge);
+  } else {
+    want = mySpeed;
+  }
+  want = double.parse(want.toStringAsFixed(3));
+  if ((want - mySpeed).abs() >= 0.002) {
+    return FollowStep(FollowKind.speed, speed: want, driftMs: drift);
+  }
+  return FollowStep(FollowKind.none, driftMs: drift);
 }

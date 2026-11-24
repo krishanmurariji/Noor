@@ -237,6 +237,22 @@ void main() {
       expect(await aanya.letIn(aanya.state.room!.knocks.single), isFalse);
     });
 
+    test('the star stamps positions with the store\'s clock', () async {
+      var now = 1000000;
+      db.clock = () => now + 250; // the store's clock runs 250 ms ahead
+      final star =
+          RoomController(MemoryRoomStore(db, 'uid-star'), clock: () => now);
+      addTearDown(star.dispose);
+      await star.start('Star');
+      await _settle();
+      expect(star.clockReady, isTrue);
+      expect(star.serverNow(), now + 250);
+      await star.publishPlay(_song, const Duration(seconds: 10), true,
+          at: star.serverNow());
+      final p = await star.store.read('rooms/${star.state.code}/play');
+      expect((p as Map)['at'], now + 250);
+    });
+
     test('playback and the queue go up to the room', () async {
       await startAndLetIn();
       await aanya.publishPlay(_song, const Duration(seconds: 40), true);
@@ -272,25 +288,40 @@ void main() {
       expect(s.at, const Duration(seconds: 35));
     });
 
-    test('drifted: seek; close enough: nothing', () {
-      final far = followStep(
-          play: play(),
-          serverNow: 6000,
-          mine: _song,
-          myPosition: const Duration(seconds: 30),
-          myPlaying: true,
-          myLoading: false,
-          last: (id: _song.videoId, playing: true));
-      expect(far.kind, FollowKind.seek);
-      final near = followStep(
-          play: play(),
-          serverNow: 6000,
-          mine: _song,
-          myPosition: const Duration(milliseconds: 34200),
-          myPlaying: true,
-          myLoading: false,
-          last: (id: _song.videoId, playing: true));
-      expect(near.kind, FollowKind.none);
+    FollowStep at(int myMs, {double speed = 1.0, int lead = 0}) => followStep(
+        play: play(),
+        serverNow: 6000, // the star is at 35 000 ms
+        mine: _song,
+        myPosition: Duration(milliseconds: myMs),
+        myPlaying: true,
+        myLoading: false,
+        mySpeed: speed,
+        leadMs: lead,
+        last: (id: _song.videoId, playing: true));
+
+    test('far apart: seek, aimed ahead by the learned lead', () {
+      final s = at(30000, lead: 150);
+      expect(s.kind, FollowKind.seek);
+      expect(s.at, const Duration(milliseconds: 35150));
+      expect(s.driftMs, -5000);
+    });
+
+    test('a little behind: play faster; a little ahead: slower', () {
+      final behind = at(34750);
+      expect(behind.kind, FollowKind.speed);
+      expect(behind.speed, 1.05);
+      final ahead = at(35100);
+      expect(ahead.kind, FollowKind.speed);
+      expect(ahead.speed, 0.96);
+      // Never more than 5 % either way.
+      expect(at(34400).speed, 1.05);
+    });
+
+    test('in sync: normal speed again; tiny gaps are left alone', () {
+      final back = at(35005, speed: 1.02);
+      expect(back.kind, FollowKind.speed);
+      expect(back.speed, 1.0);
+      expect(at(35020).kind, FollowKind.none);
     });
 
     test('the star pauses or plays: so does this phone', () {

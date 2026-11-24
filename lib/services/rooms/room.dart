@@ -255,6 +255,32 @@ class RoomController {
   /// The store's clock, as best this phone knows it.
   int serverNow() => _clock() + _offset;
 
+  /// Round trip of the best clock reading so far (ms); null before one.
+  int? get clockRtt => _rtt;
+  int? _rtt;
+  int _rttAt = 0;
+
+  /// True once this phone knows the store's clock well enough to stamp
+  /// positions itself.
+  bool get clockReady => _rtt != null;
+
+  /// Reads the store's clock once: writes its timestamp and halves the
+  /// round trip. Keeps the reading with the shortest round trip (the most
+  /// exact), refreshed every few minutes as phone clocks drift.
+  Future<void> _readClock(String path) async {
+    final before = _clock();
+    final at = await store.write(path, RoomStore.serverTime);
+    final after = _clock();
+    if (at is! num) return;
+    final rtt = after - before;
+    final stale = after - _rttAt > const Duration(minutes: 5).inMilliseconds;
+    if (_rtt == null || rtt <= _rtt! + 20 || stale) {
+      _offset = at.toInt() - (before + after) ~/ 2;
+      _rtt = rtt;
+      _rttAt = after;
+    }
+  }
+
   String get uid => store.uid;
   String _room(String code) => 'rooms/$code';
 
@@ -357,18 +383,20 @@ class RoomController {
         // room: removed, blocked, or the room ended.
         onError: (Object e) => _ended(code, "You're no longer in the room")));
     _beat = Timer.periodic(const Duration(seconds: 30), (_) => _heartbeat());
-    unawaited(_heartbeat());
+    unawaited(() async {
+      // A few readings at the start: the quickest round trip wins.
+      for (var i = 0; i < 4 && _state.code == code; i++) {
+        await _heartbeat();
+      }
+      nlog('[R] clock: offset ${_offset}ms, round trip ${_rtt ?? '?'}ms');
+    }());
   }
 
   Future<void> _heartbeat() async {
     final code = _state.code;
     if (!_state.inRoom || code == null) return;
-    final before = _clock();
     try {
-      final at = await store.write(
-          '${_room(code)}/members/$uid/seen', RoomStore.serverTime);
-      final after = _clock();
-      if (at is num) _offset = at.toInt() - (before + after) ~/ 2;
+      await _readClock('${_room(code)}/members/$uid/seen');
     } catch (_) {/* next beat */}
   }
 
@@ -531,15 +559,18 @@ class RoomController {
     });
   }
 
-  /// What plays now, for everyone to follow.
-  Future<void> publishPlay(Song? song, Duration position, bool playing) async {
+  /// What plays now, for everyone to follow. [at] is when [position] was
+  /// read, on the store's clock ([serverNow]); without it the store stamps
+  /// the write when it arrives (late by the upload time).
+  Future<void> publishPlay(Song? song, Duration position, bool playing,
+      {int? at}) async {
     if (!_state.isStar) return;
     await store.write('${_room(_code)}/play', {
       if (song != null) 'song': song.toMap()..remove('localUri'),
       if (song?.isLocal ?? false) 'phone': true,
       'pos': position.inMilliseconds,
       'playing': playing,
-      'at': RoomStore.serverTime,
+      'at': at ?? RoomStore.serverTime,
     });
   }
 
