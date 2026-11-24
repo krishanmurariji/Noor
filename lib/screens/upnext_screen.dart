@@ -28,8 +28,11 @@ class UpNextScreen extends ConsumerWidget {
     final id = list[from].videoId;
     final source = contextSourceFor(current,
         playlists: ref.read(playlistProvider),
-        liked: ref.read(likedSongsProvider));
+        liked: ref.read(likedSongsProvider),
+        onDevice: ref.read(myMusicProvider));
     switch (source.kind) {
+      case 'music':
+        break; // the phone's own order stays; only what plays next moves
       case 'playlist':
         await ref
             .read(playlistProvider.notifier)
@@ -57,11 +60,11 @@ class UpNextScreen extends ConsumerWidget {
     final title = song == null
         ? 'Up next'
         : contextTitleFor(song,
-            playlists: playlists, liked: liked, history: history);
-    final list = song == null
-        ? const []
-        : contextListFor(song,
-            playlists: playlists, liked: liked, history: history);
+            playlists: playlists,
+            liked: liked,
+            history: history,
+            onDevice: ref.watch(myMusicProvider));
+    final list = song == null ? const [] : ref.watch(playQueueProvider)(song);
 
     return Scaffold(
       backgroundColor: Colors.transparent,

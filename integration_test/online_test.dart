@@ -21,8 +21,11 @@ void main() {
 
   testWidgets('first run → search → play', (t) async {
     app.main();
-    expect(await waitFor(t, find.byType(NoorSearchButton), timeout: const Duration(seconds: 90)),
-        isTrue, reason: 'Home did not appear');
+    expect(
+        await waitFor(t, find.byType(NoorSearchButton),
+            timeout: const Duration(seconds: 90)),
+        isTrue,
+        reason: 'Home did not appear');
     await idle(t, const Duration(seconds: 2));
     await shot(b, t, '01_home_first_run');
 
@@ -43,9 +46,11 @@ void main() {
     final outcome = find.byWidgetPredicate((w) =>
         w is NoorSongRow ||
         (w is Text &&
-            (w.data ?? '').contains(RegExp(r"offline|limiting|failed|timed out|No results",
+            (w.data ?? '').contains(RegExp(
+                r"offline|limiting|failed|timed out|No results",
                 caseSensitive: false))));
-    expect(await waitFor(t, outcome, timeout: const Duration(seconds: 60)), isTrue,
+    expect(
+        await waitFor(t, outcome, timeout: const Duration(seconds: 60)), isTrue,
         reason: 'Search gave no answer at all');
     await idle(t, const Duration(seconds: 1));
     await shot(b, t, '02_search');
@@ -58,9 +63,13 @@ void main() {
     report('search: ${rows.evaluate().length} results');
 
     // A tap on the card opens its details (it does not play).
-    await t.tap(find.descendant(of: rows.first, matching: find.byType(Text)).first);
-    expect(await waitFor(t, find.byType(SongDetailsPanel), timeout: const Duration(seconds: 3)),
-        isTrue, reason: 'Tapping a search result did not open its details');
+    await t.tap(
+        find.descendant(of: rows.first, matching: find.byType(Text)).first);
+    expect(
+        await waitFor(t, find.byType(SongDetailsPanel),
+            timeout: const Duration(seconds: 3)),
+        isTrue,
+        reason: 'Tapping a search result did not open its details');
     final gotDetails = await waitFor(t, find.textContaining(' views'),
         timeout: const Duration(seconds: 20));
     await shot(b, t, '02b_details');
@@ -73,19 +82,24 @@ void main() {
         reason: 'The details did not fold away');
 
     Finder playOn(int i) => find.descendant(
-        of: find.byType(NoorSongRow).at(i), matching: find.byType(NoorPlayPauseButton));
+        of: find.byType(NoorSongRow).at(i),
+        matching: find.byType(NoorPlayPauseButton));
 
     await t.tap(playOn(0));
     // Feedback must be quick: the card dips and "Loading…" appears.
-    expect(await waitFor(t, find.text('Loading…'), timeout: const Duration(seconds: 3)),
-        isTrue, reason: 'No loading feedback after tapping a song');
+    expect(
+        await waitFor(t, find.text('Loading…'),
+            timeout: const Duration(seconds: 3)),
+        isTrue,
+        reason: 'No loading feedback after tapping a song');
     await shot(b, t, '03_loading');
 
     final settled = await waitFor(
         t,
         find.byWidgetPredicate((w) =>
             w is Text &&
-            (w.data ?? '').contains(RegExp(r'Retry in|Could not|refused|limiting|Skipped',
+            (w.data ?? '').contains(RegExp(
+                r'Retry in|Could not|refused|limiting|Skipped',
                 caseSensitive: false))),
         timeout: const Duration(seconds: 60));
     final stillLoading = find.text('Loading…').evaluate().isNotEmpty;
@@ -103,10 +117,12 @@ void main() {
       // network, the immediate "Retry in …" (the app does not hammer it).
       final answered = find.byWidgetPredicate((w) =>
           w is Text &&
-          (w.data ?? '').contains(RegExp(r'Loading…|YouTube busy|Retry in|limiting|Could not|refused',
+          (w.data ?? '').contains(RegExp(
+              r'Loading…|YouTube busy|Retry in|limiting|Could not|refused',
               caseSensitive: false)));
       expect(await waitFor(t, answered, timeout: const Duration(seconds: 3)),
-          isTrue, reason: 'No feedback for the second song');
+          isTrue,
+          reason: 'No feedback for the second song');
       report(find.text('Loading…').evaluate().isNotEmpty
           ? 'second song: loading shown'
           : 'second song: answered at once (YouTube limiting this network)');

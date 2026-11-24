@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'widgets/noor_toast.dart';
+import 'widgets/offline_pill.dart';
 import 'widgets/buds_popup.dart';
 import 'services/audio_devices.dart';
 import 'services/updater.dart';
@@ -12,6 +13,7 @@ import 'models/song.dart';
 import 'providers/last_played_provider.dart';
 import 'providers/library_provider.dart';
 import 'providers/player_provider.dart';
+import 'providers/queue_rules.dart';
 import 'theme/noor_palette.dart';
 import 'providers/theme_provider.dart';
 import 'screens/main_shell.dart';
@@ -65,6 +67,22 @@ class _BudsAnnouncer {
   }
 }
 
+/// What decides the playing song's queue, as a key that changes only when
+/// the queue should: which list it belongs to and, for a playlist, My
+/// Favorites or My Music, that list's songs. For My History only the kind.
+final _queueContextKeyProvider = Provider<String>((ref) {
+  final song = ref.watch(playerProvider.select((s) => s.song));
+  if (song == null) return '';
+  final source = contextSourceFor(song,
+      playlists: ref.watch(playlistProvider),
+      liked: ref.watch(likedSongsProvider),
+      onDevice: ref.watch(myMusicProvider));
+  if (source.kind == 'history') return '${song.videoId}|history';
+  final list = ref.read(playQueueProvider)(song);
+  return '${song.videoId}|${source.kind}|${source.playlistId}|'
+      '${list.map((s) => s.videoId).join(',')}';
+});
+
 class NebulaApp extends ConsumerWidget {
   const NebulaApp({super.key});
 
@@ -77,6 +95,21 @@ class NebulaApp extends ConsumerWidget {
       if (song == null || prev?.videoId == song.videoId) return;
       ref.read(historyProvider.notifier).add(song);
       ref.read(lastPlayedProvider.notifier).set(song);
+    });
+    // The queue follows the song's own list: when the playing song joins or
+    // leaves a playlist or My Favorites (or that list changes), what plays
+    // next becomes that list. History reordering itself as songs play does
+    // not count (it would bounce between the last two songs).
+    ref.listen<String>(_queueContextKeyProvider, (prev, next) {
+      if (prev == null || prev == next) return;
+      // Only a change for the same song (a new song brought its queue).
+      if (prev.split('|').first != next.split('|').first) return;
+      final song = ref.read(playerProvider).song;
+      if (song == null) return;
+      final queue = ref.read(playQueueProvider)(song);
+      if (queue.contains(song)) {
+        ref.read(playerProvider.notifier).setQueueOrder(queue);
+      }
     });
     ref.listen<String?>(playerProvider.select((s) => s.notice), (_, n) {
       if (n == null) return;
@@ -111,7 +144,8 @@ class NebulaApp extends ConsumerWidget {
       themeMode: themeMode,
       theme: _light(),
       darkTheme: _dark(),
-      home: const MainShell(),
+      // Going offline / back online is said once, in the top capsule.
+      home: const NoorOfflineAnnouncer(child: MainShell()),
     );
   }
 
