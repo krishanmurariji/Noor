@@ -25,6 +25,7 @@ import '../theme/ripple_ring_clipper.dart';
 import '../widgets/song_row.dart';
 import '../widgets/noor_toast.dart';
 import '../theme/noor_watermark.dart';
+import '../theme/noor_whirlpool.dart';
 import '../theme/noor_search_button.dart';
 
 /// Bumped by other pages (e.g. the player's Search button) to open search
@@ -82,6 +83,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
 
   @override
   void dispose() {
+    _binNear.dispose();
     _edgeTimer?.cancel();
     _sliderScroll.dispose();
     _binDrop.dispose();
@@ -229,8 +231,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   Offset? _dragAt;
   Timer? _edgeTimer;
 
+  /// How close the held playlist is to the whirlpool (0 far, 1 at it).
+  final ValueNotifier<double> _binNear = ValueNotifier(0);
+
   void _dragMoved(Offset global) {
     _dragAt = global;
+    // 0 while the card is in its row, rising to 1 as it reaches the
+    // whirlpool's eye at the top.
+    final top = MediaQuery.paddingOf(context).top;
+    final eye = top + 34;
+    final row = _sliderKey.currentContext?.findRenderObject() as RenderBox?;
+    final home = row == null || !row.hasSize
+        ? eye + 140
+        : row.localToGlobal(row.size.center(Offset.zero)).dy;
+    _binNear.value = home <= eye
+        ? 0
+        : ((home - global.dy) / (home - eye)).clamp(0.0, 1.0).toDouble();
     _edgeTimer ??=
         Timer.periodic(const Duration(milliseconds: 16), (_) => _edgeTick());
   }
@@ -271,6 +287,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   }
 
   void _stopEdgeScroll() {
+    _binNear.value = 0;
     _edgeTimer?.cancel();
     _edgeTimer = null;
     _dragAt = null;
@@ -367,58 +384,51 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
           },
           builder: (context, hovering, _) {
             final hot = hovering.isNotEmpty || _falling != null;
-            return AnimatedContainer(
-              duration: const Duration(milliseconds: 220),
-              height: top + 110,
-              padding: EdgeInsets.only(top: top + 4),
-              // No hard edge: the glow fades out towards the sides and
-              // the bottom.
-              decoration: BoxDecoration(
-                gradient: RadialGradient(
-                  center: const Alignment(0, -0.35),
-                  radius: 1.25,
-                  colors: [
-                    red.withOpacity(hot ? 0.30 : 0.10),
-                    red.withOpacity(hot ? 0.12 : 0.04),
-                    red.withOpacity(0),
-                  ],
-                  stops: const [0, 0.45, 1],
-                ),
-              ),
-              child: Column(children: [
-                AnimatedBuilder(
-                  animation: Listenable.merge([_vortex, _binDrop]),
-                  builder: (_, __) {
-                    // Swallowing a card: the hole flares, then settles.
-                    final v = _binDrop.value;
-                    final gulp = _falling == null
-                        ? 0.0
-                        : (v < 0.7 ? v / 0.7 : (1 - (v - 0.7) / 0.3))
-                            .clamp(0.0, 1.0);
-                    return SizedBox(
-                      width: 64,
-                      height: 64,
+            final height = top + 120;
+            final eye = top + 34;
+            // The top of the page turns into a whirlpool (no lines), in the
+            // page's own colour; it warms to red as a playlist comes near.
+            return SizedBox(
+              height: height,
+              child: AnimatedBuilder(
+                animation: Listenable.merge([_vortex, _binDrop, _binNear]),
+                builder: (_, __) {
+                  final v = _binDrop.value;
+                  final gulp = _falling == null
+                      ? 0.0
+                      : (v < 0.7 ? v / 0.7 : (1 - (v - 0.7) / 0.3))
+                          .clamp(0.0, 1.0);
+                  final near = hot ? 1.0 : _binNear.value;
+                  return Stack(children: [
+                    Positioned.fill(
                       child: CustomPaint(
-                        painter: _WormholePainter(
-                          turn: _vortex.value * (hot ? 2 : 1),
-                          strength: hot ? 1 : 0.45,
+                        painter: NoorWhirlpoolPainter(
+                          turn: _vortex.value,
+                          near: near,
                           gulp: gulp,
-                          color: red,
+                          page: t.bg,
+                          dark: t.isDark,
+                          centre: Offset(0.5, eye / height),
                         ),
                       ),
-                    );
-                  },
-                ),
-                const SizedBox(height: 2),
-                Text(
-                    hot
-                        ? 'Let go to delete'
-                        : 'Drag here to delete the playlist',
-                    style: TextStyle(
-                        color: red.withOpacity(hot ? 1 : 0.55),
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w600)),
-              ]),
+                    ),
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      top: eye + 22, // just under the eye, above the cards
+                      child: Text(
+                          hot
+                              ? 'Let go to delete'
+                              : 'Drag here to delete the playlist',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                              color: Color.lerp(t.mute, red, near),
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w600)),
+                    ),
+                  ]);
+                },
+              ),
             );
           },
         ),
@@ -1227,68 +1237,3 @@ class _PhoneAccessPill extends ConsumerWidget {
 
 /// A wormhole: spiral arms turning round a dark centre, in [color].
 /// [strength] 0..1 is how vivid it is; [gulp] flares it while swallowing.
-class _WormholePainter extends CustomPainter {
-  _WormholePainter({
-    required this.turn,
-    required this.strength,
-    required this.gulp,
-    required this.color,
-  });
-
-  final double turn;
-  final double strength;
-  final double gulp;
-  final Color color;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final c = size.center(Offset.zero);
-    final r = size.shortestSide / 2 * (1 + 0.18 * gulp);
-    // A soft glow under the arms.
-    canvas.drawCircle(
-        c,
-        r,
-        Paint()
-          ..shader = RadialGradient(colors: [
-            color.withOpacity(0.55 * strength),
-            color.withOpacity(0.18 * strength),
-            color.withOpacity(0),
-          ], stops: const [
-            0,
-            0.55,
-            1
-          ]).createShader(Rect.fromCircle(center: c, radius: r)));
-    // Spiral arms, each curling into the centre.
-    final arm = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
-    const arms = 4;
-    for (var a = 0; a < arms; a++) {
-      final path = Path();
-      for (var i = 0; i <= 40; i++) {
-        final k = i / 40; // 0 outside .. 1 centre
-        final ang = turn * 2 * math.pi + a * 2 * math.pi / arms + k * 2.6;
-        final rr = r * 0.95 * (1 - k);
-        final p = c + Offset(math.cos(ang), math.sin(ang)) * rr;
-        i == 0 ? path.moveTo(p.dx, p.dy) : path.lineTo(p.dx, p.dy);
-      }
-      arm
-        ..strokeWidth = 1.6
-        ..color = color.withOpacity((0.35 + 0.5 * strength).clamp(0.0, 1.0));
-      canvas.drawPath(path, arm);
-    }
-    // The dark eye.
-    canvas.drawCircle(
-        c,
-        r * (0.16 + 0.08 * gulp),
-        Paint()
-          ..color = const Color(0xFF2B1A12).withOpacity(0.85 * strength + 0.1));
-  }
-
-  @override
-  bool shouldRepaint(_WormholePainter old) =>
-      old.turn != turn ||
-      old.strength != strength ||
-      old.gulp != gulp ||
-      old.color != color;
-}
