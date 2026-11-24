@@ -4,7 +4,6 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../models/song.dart';
 import '../services/song_details.dart';
@@ -90,6 +89,36 @@ class _SongInfoSheetState extends ConsumerState<SongInfoSheet>
   }
 
   void _close() => Navigator.of(context).maybePop();
+
+  /// How far the finger has pulled past the end of the details.
+  double _over = 0;
+  bool _closing = false;
+
+  bool _onScroll(ScrollNotification n) {
+    if (_closing) return false;
+    final m = n.metrics;
+    if (n is ScrollUpdateNotification && n.dragDetails != null) {
+      _over = math.max(0, m.pixels - m.maxScrollExtent);
+      if (_over > 70) {
+        _closing = true;
+        _close();
+      }
+    } else if (n is OverscrollNotification && n.dragDetails != null) {
+      _over += n.overscroll.clamp(0, double.infinity);
+      if (_over > 70) {
+        _closing = true;
+        _close();
+      }
+    } else if (n is ScrollEndNotification) {
+      final v = n.dragDetails?.primaryVelocity ?? 0;
+      if (v < -700 && m.pixels >= m.maxScrollExtent - 1) {
+        _closing = true;
+        _close();
+      }
+      _over = 0;
+    }
+    return false;
+  }
 
   /// 0→1 over [a, b] of the opening (the animation's own 0–1).
   double _step(double a, double b, [Curve curve = Curves.easeOutCubic]) {
@@ -185,7 +214,14 @@ class _SongInfoSheetState extends ConsumerState<SongInfoSheet>
                         ),
                       ),
                     ),
-                    _content(context, t, song, details, d, mq, sleeve, record),
+                    // The details scroll, so they take vertical swipes:
+                    // swiping up past their end (or when they fit) closes
+                    // the panel, the same as swiping up anywhere else.
+                    NotificationListener<ScrollNotification>(
+                      onNotification: _onScroll,
+                      child: _content(
+                          context, t, song, details, d, mq, sleeve, record),
+                    ),
                   ]),
                 ),
               ),
@@ -433,37 +469,7 @@ class _SongInfoSheetState extends ConsumerState<SongInfoSheet>
               )),
         ],
 
-        // ── What to do with it ─────────────────────────────────────────
-        const SizedBox(height: 22),
-        _enter(
-            0.78,
-            Row(children: [
-              if (widget.onAddToPlaylist != null)
-                Expanded(
-                  child: _Action(
-                    icon: Icons.playlist_add_rounded,
-                    label: 'Add to playlist',
-                    filled: true,
-                    onTap: () {
-                      Navigator.of(context).pop();
-                      widget.onAddToPlaylist!();
-                    },
-                  ),
-                ),
-              if (widget.onAddToPlaylist != null && !song.isLocal)
-                const SizedBox(width: 10),
-              if (!song.isLocal)
-                Expanded(
-                  child: _Action(
-                    icon: Icons.open_in_new_rounded,
-                    label: 'YouTube',
-                    onTap: () => launchUrl(
-                        Uri.parse(
-                            'https://www.youtube.com/watch?v=${song.videoId}'),
-                        mode: LaunchMode.externalApplication),
-                  ),
-                ),
-            ])),
+        const SizedBox(height: 10),
 
         // ── Handle: tap, or swipe up anywhere, to close ────────────────
         GestureDetector(
@@ -601,47 +607,4 @@ class _Dots extends CustomPainter {
 
   @override
   bool shouldRepaint(_Dots old) => old.color != color;
-}
-
-class _Action extends StatelessWidget {
-  const _Action(
-      {required this.icon,
-      required this.label,
-      required this.onTap,
-      this.filled = false});
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-  final bool filled;
-  @override
-  Widget build(BuildContext context) {
-    final t = NoorTheme.of(context);
-    return GestureDetector(
-      onTap: () {
-        HapticFeedback.selectionClick();
-        onTap();
-      },
-      child: Container(
-        height: 46,
-        decoration: BoxDecoration(
-          color: filled ? t.ac : Colors.transparent,
-          borderRadius: BorderRadius.circular(23),
-          border: Border.all(color: t.ac, width: 1),
-        ),
-        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Icon(icon, size: 18, color: filled ? t.onAc : t.ac),
-          const SizedBox(width: 8),
-          Flexible(
-            child: Text(label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                    color: filled ? t.onAc : t.ac,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 13.5)),
-          ),
-        ]),
-      ),
-    );
-  }
 }

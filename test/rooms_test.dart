@@ -540,7 +540,7 @@ void main() {
       // The room is named after the star (five letters at most): in the
       // panel and on the pill.
       expect(find.text('Aanya'), findsNWidgets(2));
-      expect(find.text('End the room'), findsOneWidget);
+      expect(find.byTooltip('End the room'), findsOneWidget);
       expect(find.text("· you're the star"), findsOneWidget);
       // The star renames it (cut to five letters).
       await tester.tap(find.byKey(const ValueKey('room-rename-edit')));

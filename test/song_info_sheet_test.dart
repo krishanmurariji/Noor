@@ -52,7 +52,9 @@ void main() {
     expect(find.text('LINER NOTES'), findsOneWidget);
     expect(find.text('SINGER'), findsOneWidget);
     expect(find.text('Irshad Kamil'), findsOneWidget);
-    expect(find.text('YouTube'), findsOneWidget);
+    // No YouTube or Add to playlist buttons any more.
+    expect(find.text('YouTube'), findsNothing);
+    expect(find.text('Add to playlist'), findsNothing);
 
     // Swipe it back up: it follows the finger and goes.
     await t.drag(find.text('Monsoon Letters'), const Offset(0, -200));
@@ -61,18 +63,18 @@ void main() {
     }
     expect(find.text('LINER NOTES'), findsNothing);
 
-    // Add to playlist closes it and hands over.
+    // Again, with a long swipe that first scrolls the details to their
+    // end: going on past the end puts the panel away too.
     await t.tap(find.text('open'));
     for (var i = 0; i < 14; i++) {
       await t.pump(const Duration(milliseconds: 100));
     }
-    await t.ensureVisible(find.text('Add to playlist'));
-    await t.pump();
-    await t.tap(find.text('Add to playlist'));
+    expect(find.text('LINER NOTES'), findsOneWidget);
+    await t.drag(find.text('LINER NOTES'), const Offset(0, -900));
     for (var i = 0; i < 6; i++) {
       await t.pump(const Duration(milliseconds: 100));
     }
-    expect(added, 1);
     expect(find.text('LINER NOTES'), findsNothing);
+    expect(added, 0);
   });
 }

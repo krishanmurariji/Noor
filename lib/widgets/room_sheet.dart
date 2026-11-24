@@ -202,14 +202,13 @@ class _Button extends StatelessWidget {
       this.filled = true,
       this.icon,
       this.danger = false,
-      this.height = 48,
       super.key});
   final String label;
   final VoidCallback? onTap;
   final bool filled;
   final bool danger;
   final IconData? icon;
-  final double height;
+  static const height = 48.0;
 
   @override
   Widget build(BuildContext context) {
@@ -614,11 +613,6 @@ class _RoomHeaderState extends ConsumerState<_RoomHeader> {
           ),
         ]),
       ),
-      SizedBox(
-        width: 96,
-        child: _Button('Invite',
-            height: 38, onTap: () => shareRoomInvite(context, room)),
-      ),
     ]);
   }
 }
@@ -723,37 +717,149 @@ class _Members extends ConsumerWidget {
   }
 }
 
-class _SongLine extends StatelessWidget {
-  const _SongLine(this.song);
-  final Song song;
+/// A round icon-only button (its name is read out and shows on a long
+/// press), with an optional count on its corner.
+class _IconAction extends StatelessWidget {
+  const _IconAction({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.filled = false,
+    this.danger = false,
+    this.count = 0,
+  });
+  final IconData icon;
+  final String label;
+  final VoidCallback? onTap;
+  final bool filled;
+  final bool danger;
+  final int count;
+
   @override
   Widget build(BuildContext context) {
     final t = NoorTheme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
-      child: Row(children: [
-        ClipOval(
-          child: SizedBox(
-              width: 40,
-              height: 40,
-              child: NoorArtwork(url: song.thumbnailUrl)),
+    const red = Color(0xFFB23A2E);
+    final fg = danger
+        ? red
+        : filled
+            ? t.onAc
+            : t.ac;
+    return Tooltip(
+      message: label,
+      child: Semantics(
+        button: true,
+        enabled: onTap != null,
+        label: count > 0 ? '$label, $count' : label,
+        excludeSemantics: true,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onTap == null
+              ? null
+              : () {
+                  HapticFeedback.selectionClick();
+                  onTap!();
+                },
+          child: Opacity(
+            opacity: onTap == null ? 0.4 : 1,
+            child: Stack(clipBehavior: Clip.none, children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: filled && !danger ? t.ac : null,
+                  shape: BoxShape.circle,
+                  border: filled && !danger
+                      ? null
+                      : Border.all(
+                          color: danger ? red.withValues(alpha: 0.6) : t.soft,
+                          width: 0.8),
+                ),
+                child: Icon(icon, size: 20, color: fg),
+              ),
+              if (count > 0)
+                Positioned(
+                  right: -3,
+                  top: -3,
+                  child: Container(
+                    constraints: const BoxConstraints(minWidth: 18),
+                    height: 18,
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                        color: t.ac,
+                        borderRadius: BorderRadius.circular(9),
+                        border: Border.all(color: t.bg, width: 1.5)),
+                    child: Text('$count',
+                        style: TextStyle(
+                            color: t.onAc,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800)),
+                  ),
+                ),
+            ]),
+          ),
         ),
-        const SizedBox(width: 12),
-        Expanded(
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(song.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: noorSongTitleStyle(t.ac, size: 18)),
-            Text(song.artist,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: noorArtistStyle(t.mute, size: 11.5)),
-          ]),
-        ),
-      ]),
+      ),
     );
+  }
+}
+
+/// A row of [_IconAction]s spread across the panel.
+class _Actions extends StatelessWidget {
+  const _Actions(this.children);
+  final List<Widget> children;
+  @override
+  Widget build(BuildContext context) =>
+      Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: children);
+}
+
+/// Songs in the app's own song-card design.
+class _Songs extends StatelessWidget {
+  const _Songs({
+    required this.label,
+    required this.songs,
+    this.current,
+    this.playing = false,
+    this.onTap,
+    this.onPlayPause,
+    this.empty,
+  });
+  final String label;
+  final List<Song> songs;
+
+  /// The one playing now (shown as the current card).
+  final Song? current;
+  final bool playing;
+  final void Function(Song)? onTap;
+  final VoidCallback? onPlayPause;
+  final String? empty;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = NoorTheme.of(context);
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      _Label(label),
+      const SizedBox(height: 8),
+      if (songs.isEmpty && empty != null)
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Text(empty!, style: TextStyle(color: t.mute, fontSize: 12.5)),
+        ),
+      for (final s in songs)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: NoorSongCard(
+            thumbnailUrl: s.thumbnailUrl,
+            title: s.title,
+            artist: s.artist,
+            current: s == current,
+            playing: s == current && playing,
+            onTap: () => onTap?.call(s),
+            onPlayPause: s == current ? onPlayPause : () => onTap?.call(s),
+          ),
+        ),
+    ]);
   }
 }
 
@@ -766,115 +872,83 @@ class _StarView extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final t = NoorTheme.of(context);
     final ps = ref.watch(playerProvider);
+    final player = ref.read(playerProvider.notifier);
+    final n = ref.read(roomProvider.notifier);
+    final now = ps.displaySong;
     final upNext = ps.queueIndex + 1 < ps.queue.length
-        ? ps.queue.sublist(ps.queueIndex + 1).take(8).toList()
+        ? ps.queue.sublist(ps.queueIndex + 1).take(12).toList()
         : const <Song>[];
     final alone = room.members.length <= 1;
+    final next = room.members
+        .where((m) => m.uid != room.starUid)
+        .map((m) => m.name)
+        .firstOrNull;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
       child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             _RoomHeader(room: room, canRename: true),
-            const SizedBox(height: 14),
+            const SizedBox(height: 12),
             _Members(room: room, manage: true),
-            if (room.members.length > 1) ...[
-              const SizedBox(height: 10),
-              _Button('Sync everyone',
+            const SizedBox(height: 14),
+            _Actions([
+              _IconAction(
+                  icon: Icons.person_add_alt_1_rounded,
+                  label: 'Invite',
+                  filled: true,
+                  onTap: () => shareRoomInvite(context, room)),
+              _IconAction(
+                  key: const ValueKey('room-requests'),
+                  icon: Icons.inbox_rounded,
+                  label: 'Requests',
+                  count: room.waiting,
+                  onTap: room.waiting > 0 ? onRequests : null),
+              _IconAction(
                   key: const ValueKey('room-sync-all'),
-                  filled: false,
-                  height: 40,
                   icon: Icons.sync_rounded,
-                  onTap: () => ref.read(roomProvider.notifier).syncEveryone()),
-            ],
-            if (ps.displaySong?.isLocal ?? false) ...[
+                  label: 'Sync everyone',
+                  onTap: alone ? null : n.syncEveryone),
+              _IconAction(
+                  key: const ValueKey('room-leave'),
+                  icon: Icons.logout_rounded,
+                  label: alone
+                      ? 'End the room'
+                      : 'Leave the room ($next becomes the star)',
+                  danger: true,
+                  onTap: () {
+                    Navigator.of(context).maybePop();
+                    n.leave();
+                  }),
+            ]),
+            if (now?.isLocal ?? false) ...[
               const SizedBox(height: 10),
               Text("This song is on your phone, so the others can't hear it.",
+                  textAlign: TextAlign.center,
                   style: TextStyle(color: t.mute, fontSize: 12)),
             ],
-            if (room.waiting > 0) ...[
-              const SizedBox(height: 14),
-              Material(
-                color: t.ac,
-                borderRadius: BorderRadius.circular(18),
-                child: InkWell(
-                  key: const ValueKey('room-requests'),
-                  borderRadius: BorderRadius.circular(18),
-                  onTap: onRequests,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 10),
-                    child: Row(children: [
-                      Container(
-                        width: 26,
-                        height: 26,
-                        alignment: Alignment.center,
-                        decoration:
-                            BoxDecoration(color: t.bg, shape: BoxShape.circle),
-                        child: Text('${room.waiting}',
-                            style: TextStyle(
-                                color: t.ac,
-                                fontWeight: FontWeight.w800,
-                                fontSize: 13)),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(_waitingText(room),
-                            style: TextStyle(
-                                color: t.onAc,
-                                fontSize: 13.5,
-                                fontWeight: FontWeight.w600)),
-                      ),
-                      Icon(Icons.chevron_right_rounded, color: t.onAc),
-                    ]),
-                  ),
-                ),
-              ),
-            ],
             const SizedBox(height: 16),
-            const _Label('UP NEXT'),
-            const SizedBox(height: 6),
-            if (upNext.isEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Text('Nothing queued after this song.',
-                    style: TextStyle(color: t.mute, fontSize: 12.5)),
-              )
-            else
-              for (final s in upNext) _SongLine(s),
-            const SizedBox(height: 14),
-            _Button(alone ? 'End the room' : 'Leave the room',
-                key: const ValueKey('room-leave'),
-                filled: false,
-                danger: true,
-                height: 44, onTap: () {
-              Navigator.of(context).maybePop();
-              ref.read(roomProvider.notifier).leave();
-            }),
-            if (!alone)
-              Padding(
-                padding: const EdgeInsets.only(top: 6),
-                child: Text(
-                    '${room.members.firstWhere((m) => m.uid != room.starUid, orElse: () => room.members.first).name} becomes the star when you leave.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: t.mute, fontSize: 11.5)),
+            if (now != null)
+              _Songs(
+                label: 'NOW PLAYING',
+                songs: [now],
+                current: now,
+                playing: ps.status == NebulaPlayerStatus.playing,
+                onPlayPause: player.togglePlay,
+                onTap: (_) => player.togglePlay(),
               ),
+            const SizedBox(height: 6),
+            _Songs(
+              label: 'UP NEXT',
+              songs: upNext,
+              empty: 'Nothing queued after this song.',
+              // The star plays any of them now.
+              onTap: (s) => player.playSong(s, queue: ps.queue),
+            ),
           ]),
     );
-  }
-
-  static String _waitingText(RoomSnapshot r) {
-    final songs = r.asks.where((a) => a.isSong).length;
-    final people = r.knocks.length;
-    final star = r.asks.length - songs;
-    final parts = [
-      if (songs > 0) '$songs song${songs == 1 ? '' : 's'}',
-      if (people > 0) '$people to let in',
-      if (star > 0) '$star star request${star == 1 ? '' : 's'}',
-    ];
-    return '${parts.join(' · ')} waiting';
   }
 }
 
@@ -887,91 +961,84 @@ class _ListenerView extends ConsumerWidget {
     final t = NoorTheme.of(context);
     final n = ref.read(roomProvider.notifier);
     ref.watch(roomProvider);
+    final ps = ref.watch(playerProvider);
+    final player = ref.read(playerProvider.notifier);
     final play = room.play;
     final asked = n.askedToBeStar;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
       child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             _RoomHeader(room: room),
-            const SizedBox(height: 14),
+            const SizedBox(height: 12),
             _Members(room: room, manage: false),
+            const SizedBox(height: 14),
+            _Actions([
+              _IconAction(
+                  key: const ValueKey('room-sync'),
+                  icon: Icons.sync_rounded,
+                  label: 'Sync now',
+                  filled: true,
+                  onTap: () {
+                    n.syncNow();
+                    NoorToast.show(
+                        context, 'Back in step with ${room.starName}');
+                  }),
+              _IconAction(
+                  key: const ValueKey('room-request-song'),
+                  icon: Icons.queue_music_rounded,
+                  label: 'Request a song',
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const SearchPage()));
+                    NoorToast.show(context,
+                        'Tap a song to ask ${room.starName} to play it');
+                  }),
+              _IconAction(
+                  key: const ValueKey('room-ask-star'),
+                  icon: asked ? Icons.star_rounded : Icons.star_outline_rounded,
+                  label: asked ? 'Asked to be the star' : 'Ask to be the star',
+                  onTap: asked ? null : n.askToBeStar),
+              _IconAction(
+                  icon: Icons.person_add_alt_1_rounded,
+                  label: 'Invite',
+                  onTap: () => shareRoomInvite(context, room)),
+              _IconAction(
+                  key: const ValueKey('room-leave'),
+                  icon: Icons.logout_rounded,
+                  label: 'Leave the room',
+                  danger: true,
+                  onTap: () {
+                    Navigator.of(context).maybePop();
+                    n.leave();
+                  }),
+            ]),
             const SizedBox(height: 12),
             const _Timing(),
-            const SizedBox(height: 10),
-            _Button('Sync now',
-                key: const ValueKey('room-sync'),
-                filled: false,
-                height: 40,
-                icon: Icons.sync_rounded, onTap: () {
-              n.syncNow();
-              NoorToast.show(context, 'Back in step with ${room.starName}');
-            }),
             const SizedBox(height: 14),
-            Row(children: [
-              const Icon(Icons.star_rounded, size: 14, color: RoomCapsule.gold),
-              const SizedBox(width: 6),
-              Text('${room.starName.toUpperCase()} IS PLAYING',
-                  style: TextStyle(
-                      color: t.mute,
-                      fontSize: 11,
-                      letterSpacing: 2,
-                      fontWeight: FontWeight.w700)),
-            ]),
-            const SizedBox(height: 4),
             if (play?.fromPhone ?? false)
-              Text('A song from their phone, which only they can hear.',
+              Text(
+                  '${room.starName} is playing a song from their phone, '
+                  'which only they can hear.',
                   style: TextStyle(color: t.mute, fontSize: 12.5))
             else if (play?.song != null)
-              _SongLine(play!.song!)
-            else
-              Text('Nothing yet.',
-                  style: TextStyle(color: t.mute, fontSize: 12.5)),
+              _Songs(
+                label: '${room.starName.toUpperCase()} IS PLAYING',
+                songs: [play!.song!],
+                current: play.song,
+                playing: ps.status == NebulaPlayerStatus.playing,
+                // Play / pause stay this phone's own.
+                onPlayPause: player.togglePlay,
+                onTap: (_) => player.togglePlay(),
+              ),
             if (room.queue.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              const _Label('UP NEXT'),
-              const SizedBox(height: 4),
-              for (final s in room.queue.take(6)) _SongLine(s),
+              const SizedBox(height: 6),
+              _Songs(label: 'UP NEXT', songs: room.queue.take(12).toList()),
             ],
-            const SizedBox(height: 16),
-            _Button('Request a song',
-                key: const ValueKey('room-request-song'),
-                icon: Icons.music_note_rounded, onTap: () {
-              Navigator.of(context).pop();
-              Navigator.of(context)
-                  .push(MaterialPageRoute(builder: (_) => const SearchPage()));
-              NoorToast.show(
-                  context, 'Tap a song to ask ${room.starName} to play it');
-            }),
-            const SizedBox(height: 10),
-            Row(children: [
-              Expanded(
-                child: _Button(asked ? 'Asked to be star' : 'Ask to be star',
-                    key: const ValueKey('room-ask-star'),
-                    filled: false,
-                    height: 44,
-                    icon: Icons.star_outline_rounded,
-                    onTap: asked ? null : n.askToBeStar),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _Button('Leave',
-                    key: const ValueKey('room-leave'),
-                    filled: false,
-                    danger: true,
-                    height: 44, onTap: () {
-                  Navigator.of(context).maybePop();
-                  n.leave();
-                }),
-              ),
-            ]),
-            const SizedBox(height: 8),
-            Text('${room.starName} picks the songs. Play and pause are yours.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: t.mute, fontSize: 11.5)),
           ]),
     );
   }
@@ -1188,7 +1255,7 @@ class _RequestsState extends ConsumerState<_Requests> {
 }
 
 /// Hear an echo? This phone's timing, tuned by ear in 20 ms steps (phones
-/// take different times to get sound out of the speaker).
+/// take different times to get sound out of the speaker): one slim line.
 class _Timing extends ConsumerWidget {
   const _Timing();
 
@@ -1197,58 +1264,56 @@ class _Timing extends ConsumerWidget {
     final t = NoorTheme.of(context);
     final tune = ref.watch(roomTuneProvider);
     final n = ref.read(roomTuneProvider.notifier);
+    Widget step(IconData icon, String label, int ms, Key key) => IconButton(
+          key: key,
+          tooltip: label,
+          visualDensity: VisualDensity.compact,
+          onPressed: () {
+            HapticFeedback.selectionClick();
+            n.nudge(ms);
+          },
+          icon: Icon(icon, size: 18, color: t.ac),
+        );
     return Container(
-      padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
+      height: 44,
+      padding: const EdgeInsets.only(left: 14),
       decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(22),
           border: Border.all(color: t.faint)),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(children: [
-          Text('TIMING',
-              style: TextStyle(
-                  color: t.mute,
-                  fontSize: 11,
-                  letterSpacing: 2,
-                  fontWeight: FontWeight.w700)),
-          const SizedBox(width: 8),
-          Text(
-              tune == 0
-                  ? 'as measured'
-                  : '${tune.abs()} ms ${tune > 0 ? 'earlier' : 'later'}',
-              key: const ValueKey('room-tune-value'),
-              style: TextStyle(
-                  color: t.ac, fontSize: 12.5, fontWeight: FontWeight.w700)),
-          const Spacer(),
-          if (tune != 0)
-            TextButton(
-                onPressed: () => n.set(0),
-                child: Text('Reset',
-                    style: TextStyle(color: t.mute, fontSize: 12))),
-        ]),
-        Text(
-            'Hear an echo? If this phone sounds behind, tap Earlier; '
-            'ahead, tap Later. It stays set for this phone.',
-            style: TextStyle(color: t.mute, fontSize: 11.5, height: 1.35)),
-        const SizedBox(height: 8),
-        Row(children: [
-          Expanded(
-            child: _Button('Later',
-                key: const ValueKey('room-tune-later'),
-                filled: false,
-                height: 38,
-                icon: Icons.remove_rounded,
-                onTap: () => n.nudge(-20)),
+      child: Row(children: [
+        Tooltip(
+          message: 'Hear an echo? If this phone sounds behind, tap +; '
+              'ahead, tap −. It stays set for this phone.',
+          triggerMode: TooltipTriggerMode.tap,
+          child: Row(children: [
+            Icon(Icons.graphic_eq_rounded, size: 18, color: t.mute),
+            const SizedBox(width: 8),
+            Text('TIMING',
+                style: TextStyle(
+                    color: t.mute,
+                    fontSize: 11,
+                    letterSpacing: 2,
+                    fontWeight: FontWeight.w700)),
+          ]),
+        ),
+        const Spacer(),
+        step(Icons.remove_rounded, 'Later', -20,
+            const ValueKey('room-tune-later')),
+        GestureDetector(
+          onLongPress: () => n.set(0),
+          child: SizedBox(
+            width: 64,
+            child: Text(
+                tune == 0 ? '0 ms' : '${tune > 0 ? '+' : '−'}${tune.abs()} ms',
+                key: const ValueKey('room-tune-value'),
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    color: t.ac, fontSize: 13, fontWeight: FontWeight.w700)),
           ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: _Button('Earlier',
-                key: const ValueKey('room-tune-earlier'),
-                filled: false,
-                height: 38,
-                icon: Icons.add_rounded,
-                onTap: () => n.nudge(20)),
-          ),
-        ]),
+        ),
+        step(Icons.add_rounded, 'Earlier', 20,
+            const ValueKey('room-tune-earlier')),
+        const SizedBox(width: 4),
       ]),
     );
   }
