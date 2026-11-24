@@ -393,6 +393,11 @@ class NebulaAudioHandler extends BaseAudioHandler with SeekHandler {
           !_runner.isBusy &&
           _completedTok != _tok) {
         _completedTok = _tok;
+        if (following) {
+          // In a room the star decides what comes next.
+          nlog('[N] song ended: waiting for the star');
+          return;
+        }
         skipToNext();
       }
     });
@@ -823,7 +828,7 @@ class NebulaAudioHandler extends BaseAudioHandler with SeekHandler {
     _consecutiveFailures++;
     final canSkip =
         _queue.length > 1 && _consecutiveFailures < min(_queue.length, 5);
-    if (canSkip && _advance(forced: true)) {
+    if (canSkip && !following && _advance(forced: true)) {
       _notices.add('Skipped "${song.title}" — unavailable');
       _midPlayRetries = 0;
       _requestLoad(_queue[_idx]);
@@ -1071,6 +1076,26 @@ class NebulaAudioHandler extends BaseAudioHandler with SeekHandler {
     _queue = List.of(songs);
     _idx = _queue.indexOf(current);
     _publishQueue();
+  }
+
+  /// Listening in a room: the star picks every song, so this phone never
+  /// moves on by itself (a song ending, or failing, just waits).
+  bool following = false;
+
+  /// While following: what plays after this song in the room, so the next
+  /// one downloads ahead like any queue.
+  void followQueue(List<Song> upcoming) {
+    final cur = _current;
+    if (cur == null) return;
+    final next = [cur, ...upcoming.where((s) => s != cur && !s.isLocal)];
+    if (next.length == _queue.length &&
+        Iterable.generate(next.length).every((i) => next[i] == _queue[i])) {
+      return;
+    }
+    _queue = next;
+    _idx = 0;
+    _publishQueue();
+    _scheduleNextPrefetch(_tok);
   }
 
   /// Plays [song] after the current one (a room request accepted).

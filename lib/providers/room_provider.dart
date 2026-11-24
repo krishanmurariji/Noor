@@ -39,7 +39,7 @@ class RoomNameNotifier extends StateNotifier<String> {
   Future<void> set(String name) async {
     final n = name.trim();
     if (n.isEmpty) return;
-    state = n.length > 24 ? n.substring(0, 24) : n;
+    state = n.length > kRoomNameMax ? n.substring(0, kRoomNameMax).trim() : n;
     try {
       (await SharedPreferences.getInstance()).setString(_k, state);
     } catch (_) {}
@@ -167,6 +167,8 @@ class RoomNotifier extends StateNotifier<RoomState> {
   }
 
   void _lockPlayer(bool following) {
+    final h = _handler;
+    if (h != null) h.following = following;
     try {
       final p = _ref.read(playerProvider.notifier);
       p.followingStar =
@@ -201,6 +203,8 @@ class RoomNotifier extends StateNotifier<RoomState> {
   // ── The star publishes ────────────────────────────────────────────────
 
   final RoomPublisher _publisher = RoomPublisher();
+  int _failures = 0;
+  int _retryAt = 0;
   String _queueKey = '';
 
   int get _nowMs => DateTime.now().millisecondsSinceEpoch;
@@ -214,14 +218,21 @@ class RoomNotifier extends StateNotifier<RoomState> {
     final pos = h.player.position;
     final now = _nowMs;
     final id = song?.videoId ?? '';
+    if (now < _retryAt) return; // no connection: wait a little
     if (_publisher.due(id, playing, pos, now)) {
       _publisher.sent(id, playing, pos, now);
       // Stamped with when the position was read (not when it reaches the
       // store, which is late by the upload time).
       final at = c.clockReady ? c.serverNow() : null;
-      unawaited(
-          c.publishPlay(song, pos, playing, at: at).catchError((Object e) {
-        nlog('[R] publishing playback: $e');
+      unawaited(c.publishPlay(song, pos, playing, at: at).then((_) {
+        if (_failures > 0) nlog('[R] room reachable again');
+        _failures = 0;
+      }).catchError((Object e) {
+        // Offline (or Firebase unreachable): try again after 1, 2, 4… up to
+        // 15 s, and say so once, not twice a second.
+        if (_failures == 0) nlog('[R] cannot reach the room: $e');
+        _failures++;
+        _retryAt = _nowMs + (500 << _failures.clamp(0, 5)).clamp(1000, 15000);
         _publisher.failed();
       }));
     }
@@ -259,6 +270,12 @@ class RoomNotifier extends StateNotifier<RoomState> {
     final tune = _ref.read(roomTuneProvider);
     f.tick(state.room?.play,
         serverNow: c.serverNow() + tune, nowMs: _nowMs, clockRtt: c.clockRtt);
+    // What plays next in the room downloads ahead on this phone.
+    final h = _handler;
+    final room = state.room;
+    if (h != null && room != null && room.play?.song == h.currentSong) {
+      h.followQueue(room.queue);
+    }
   }
 
   // ── Actions (the room sheet) ──────────────────────────────────────────
@@ -392,6 +409,7 @@ class _HandlerPlayer implements FollowPlayer {
   bool get loading => _loading();
   @override
   void load(Song song) => unawaited(h.playSong(song, queue: [song]));
+
   @override
   void seek(Duration to) => unawaited(h.seek(to));
   @override

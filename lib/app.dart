@@ -131,6 +131,13 @@ class NebulaApp extends ConsumerWidget {
       if (ask != null) {
         NoorToast.showIn(overlay, e.text,
             action: 'Ask', onAction: () => rooms.askForSong(ask));
+      } else if (e.openRequests) {
+        // Someone wants in, or asked for something: "See" answers it in a
+        // pop-up in the middle of the screen.
+        NoorToast.showIn(overlay, e.text, action: 'See', onAction: () {
+          final ctx = _navigatorKey.currentContext;
+          if (ctx != null) showRoomRequests(ctx);
+        });
       } else if (e.openRoom) {
         NoorToast.showIn(overlay, e.text, action: 'See', onAction: () {
           final ctx = _navigatorKey.currentContext;

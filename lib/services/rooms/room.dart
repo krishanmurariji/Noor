@@ -12,7 +12,7 @@ import 'room_sync.dart';
 const kRoomCap = 20;
 
 /// Longest room name (it sits in the pill on the player).
-const kRoomNameMax = 5;
+const kRoomNameMax = 10;
 
 /// A member not heard from for this long shows as away…
 const kRoomAwayMs = 45000;
@@ -249,7 +249,12 @@ class RoomState {
 
 /// Something worth saying in the capsule.
 class RoomEvent {
-  const RoomEvent(this.text, {this.openRoom = false});
+  const RoomEvent(this.text,
+      {this.openRoom = false, this.openRequests = false});
+
+  /// Its "See" button opens the requests to answer (someone wants in, a
+  /// song or the star asked for).
+  final bool openRequests;
   final String text;
 
   /// Its "See" button opens the room.
@@ -422,10 +427,11 @@ class RoomController {
       final now = serverNow();
       for (final m in room.members) {
         if (m.uid != uid && m.seen > 0 && now - m.seen > kRoomGoneMs) {
-          nlog('[R] ${m.name} gone for ${(now - m.seen) ~/ 1000}s: removed');
           try {
             await store.remove('${_room(code)}/members/${m.uid}');
-          } catch (_) {}
+            nlog('[R] ${m.name} gone for ${(now - m.seen) ~/ 1000}s: '
+                'taken out of the room');
+          } catch (_) {/* offline: next beat */}
         }
       }
     }
@@ -504,7 +510,7 @@ class RoomController {
     final oldKnocks = was.knocks.map((k) => k.uid).toSet();
     for (final k in now.knocks) {
       if (!oldKnocks.contains(k.uid)) {
-        _events.add(RoomEvent('${k.name} wants to join', openRoom: true));
+        _events.add(RoomEvent('${k.name} wants to join', openRequests: true));
       }
     }
     final oldAsks = was.asks.map((a) => a.id).toSet();
@@ -514,7 +520,7 @@ class RoomController {
           a.isSong
               ? '${a.name} asked for ${a.song!.title}'
               : '${a.name} asks to be the star',
-          openRoom: true));
+          openRequests: true));
     }
   }
 

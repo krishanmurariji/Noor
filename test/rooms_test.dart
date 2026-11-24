@@ -42,7 +42,11 @@ class _FakePlayer implements FollowPlayer {
   @override
   void load(Song song) {}
   @override
-  void seek(Duration to) => seeks.add(to);
+  void seek(Duration to) {
+    seeks.add(to);
+    pos = to.inMilliseconds.toDouble();
+  }
+
   @override
   void play() {}
   @override
@@ -353,7 +357,8 @@ void main() {
   group('following the star', () {
     test('"Sync now" and "Sync everyone" jump straight to the star', () {
       final p = _FakePlayer();
-      final f = RoomFollower(p);
+      // The stand-in player lands exactly where it seeks.
+      final f = RoomFollower(p)..leadMs = 0;
       RoomPlay at(int sync) => RoomPlay(_song, 30000, true, 1000, sync: sync);
       // In step within 100 ms: left alone.
       f.tick(at(0), serverNow: 6000, nowMs: 0);
@@ -502,24 +507,115 @@ void main() {
           ),
         );
 
-    testWidgets('the capsule opens "Listen together"; a name is asked once',
+    Future<void> realTime(WidgetTester tester) async {
+      // The saved name loads in the test's clock, the room in real time.
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+        await tester.runAsync(_settle);
+      }
+      await tester.pump(const Duration(milliseconds: 400));
+    }
+
+    testWidgets('the pill opens a code field; the name is asked first, once',
         (tester) async {
       SharedPreferences.setMockInitialValues({});
       await tester.pumpWidget(app(MemoryRoomDb()));
-      expect(find.bySemanticsLabel('Listen together'), findsOneWidget);
+      expect(find.text('Listen together'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('room-pill')));
       await tester.pumpAndSettle();
-      expect(find.text('Listen together'), findsNWidgets(2)); // pill + panel
-      expect(find.byKey(const ValueKey('room-name')), findsOneWidget);
-      // Join is off until a whole code is typed.
+      // No name yet: that first.
+      await tester.enterText(find.byKey(const ValueKey('room-name')), 'Rohan');
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('room-name-save')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('room-code')), findsOneWidget);
+      // Join waits for a whole code.
       await tester.enterText(find.byKey(const ValueKey('room-code')), 'k7q');
       await tester.pump();
+      expect(find.bySemanticsLabel('Join'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('room-join')));
       await tester.pump();
-      expect(find.text('Add your name first'), findsNothing);
+      expect(find.text('Asking to join · '), findsNothing, reason: 'not yet');
     });
 
-    testWidgets('starting a room shows its code and the capsule grows',
+    testWidgets(
+        'Create: the code in the pill with a thumbs-up, the star on the right; '
+        'the panel renames and leaves', (tester) async {
+      SharedPreferences.setMockInitialValues({'room_my_name': 'Aanya'});
+      final db = MemoryRoomDb();
+      await tester.pumpWidget(app(db));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('room-pill')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('room-start')));
+      await realTime(tester);
+      final code = (db.tree.value as Map)['rooms'].keys.single as String;
+      expect(find.byKey(const ValueKey('room-pill-code')), findsOneWidget);
+      expect(find.text(code), findsOneWidget);
+      expect(find.text('Aanya'), findsOneWidget); // ★ Aanya on the right
+      await tester.tap(find.byKey(const ValueKey('room-created-ok')));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byKey(const ValueKey('room-created-ok')), findsNothing);
+
+      // Someone joins: their initial replaces the code on the left.
+      await tester.runAsync(() async {
+        await MemoryRoomStore(db, 'x').write('rooms/$code/members/uid-r',
+            {'name': 'Rohan', 'at': 9e12, 'seen': 9e12});
+        await _settle();
+      });
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text(code), findsNothing);
+      expect(find.text('R'), findsOneWidget);
+
+      // Swipe right: everyone as circles; tap one for the full name.
+      await tester.fling(
+          find.byKey(const ValueKey('room-pill')), const Offset(300, 0), 1000);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('room-everyone')), findsOneWidget);
+      await tester.tap(find.descendant(
+          of: find.byKey(const ValueKey('room-everyone')),
+          matching: find.text('R')));
+      await tester.pumpAndSettle();
+      expect(find.text('Rohan'), findsOneWidget);
+      await tester.fling(find.byKey(const ValueKey('room-everyone')),
+          const Offset(-300, 0), 1000);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('room-everyone')), findsNothing);
+
+      // The panel: the name pill renames (ten letters at most)…
+      await tester.tap(find.byKey(const ValueKey('room-pill')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('room-rename-edit')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('room-rename')), '');
+      await tester.enterText(
+          find.byKey(const ValueKey('room-rename')), 'Sunday night');
+      await tester.pumpAndSettle();
+      await tester.runAsync(() async {
+        await tester.tap(find.byKey(const ValueKey('room-rename-save')));
+        await _settle();
+      });
+      await tester.pumpAndSettle();
+      expect(find.text('Sunday nig'), findsOneWidget);
+      // …swiped right it has Sync and Share…
+      await tester.fling(find.text('Sunday nig'), const Offset(300, 0), 1000);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('room-sync-all')), findsOneWidget);
+      expect(find.byKey(const ValueKey('room-share')), findsOneWidget);
+      await tester.fling(find.byKey(const ValueKey('room-share')),
+          const Offset(-300, 0), 1000);
+      await tester.pumpAndSettle();
+      // …and leaving hands the room to Rohan.
+      await tester.runAsync(() async {
+        await tester.tap(find.byKey(const ValueKey('room-leave')));
+        await _settle();
+      });
+      await tester.pumpAndSettle();
+      final room = (db.tree.value as Map)['rooms'][code] as Map;
+      expect((room['info'] as Map)['star'], 'uid-r');
+    });
+
+    testWidgets('requests are answered in a pop-up in the middle',
         (tester) async {
       SharedPreferences.setMockInitialValues({'room_my_name': 'Aanya'});
       final db = MemoryRoomDb();
@@ -527,40 +623,37 @@ void main() {
       await tester.pump();
       await tester.tap(find.byKey(const ValueKey('room-pill')));
       await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('room-name')), findsNothing);
       await tester.tap(find.byKey(const ValueKey('room-start')));
-      // The saved name loads in the test's clock, the room in real time.
-      for (var i = 0; i < 6; i++) {
-        await tester.pump(const Duration(milliseconds: 100));
-        await tester.runAsync(_settle);
-      }
-      await tester.pump(const Duration(milliseconds: 400));
+      await realTime(tester);
       final code = (db.tree.value as Map)['rooms'].keys.single as String;
-      expect(find.text(code), findsOneWidget);
-      // The room is named after the star (five letters at most): in the
-      // panel and on the pill.
-      expect(find.text('Aanya'), findsNWidgets(2));
-      expect(find.byTooltip('End the room'), findsOneWidget);
-      expect(find.text("· you're the star"), findsOneWidget);
-      // The star renames it (cut to five letters).
-      await tester.tap(find.byKey(const ValueKey('room-rename-edit')));
-      await tester.pump();
-      await tester.enterText(find.byKey(const ValueKey('room-rename')), '');
-      await tester.enterText(
-          find.byKey(const ValueKey('room-rename')), 'Sunday night');
       await tester.runAsync(() async {
-        await tester.tap(find.byKey(const ValueKey('room-rename-save')));
+        await MemoryRoomStore(db, 'uid-z')
+            .write('rooms/$code/knocks/uid-z', {'name': 'Zaid', 'at': 5});
         await _settle();
       });
-      await tester.pump(const Duration(milliseconds: 300));
-      expect(find.text('Sunda'), findsNWidgets(2));
-      // Leave the timers behind cleanly.
+      await tester.pump(const Duration(milliseconds: 400));
+      // The count on the pill opens them.
+      await tester.tap(find.byKey(const ValueKey('room-waiting')));
+      await tester.pumpAndSettle();
+      expect(find.text('Requests'), findsOneWidget);
+      expect(find.text('wants to join'), findsOneWidget);
       await tester.runAsync(() async {
-        await tester.tap(find.byKey(const ValueKey('room-leave')));
+        await tester.tap(find.bySemanticsLabel('Let in'));
         await _settle();
       });
       await tester.pumpAndSettle();
-      expect(db.tree.value, isNull);
+      // Answered: the pop-up closes by itself.
+      expect(find.text('Requests'), findsNothing);
+      final members =
+          ((db.tree.value as Map)['rooms'][code] as Map)['members'] as Map;
+      expect(members.keys, contains('uid-z'));
+      await tester.runAsync(() async {
+        await ProviderScope.containerOf(tester.element(find.byType(RoomPill)))
+            .read(roomProvider.notifier)
+            .leave();
+        await _settle();
+      });
+      await tester.pumpAndSettle();
     });
   });
 }

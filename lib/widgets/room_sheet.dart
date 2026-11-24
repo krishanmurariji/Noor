@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/song.dart';
 import '../providers/player_provider.dart';
 import '../providers/room_provider.dart';
-import '../screens/search_screen.dart';
 import '../services/rooms/room.dart';
 import '../theme/noor_artwork.dart';
 import '../theme/noor_palette.dart';
@@ -17,14 +16,14 @@ import 'room_capsule.dart';
 /// (for the star) the requests.
 /// The room panel drops down from the top, under the pill it came from;
 /// swipe it up or tap outside to close.
-Future<void> showRoomSheet(BuildContext context, {bool requests = false}) {
+Future<void> showRoomSheet(BuildContext context) {
   return showGeneralDialog<void>(
     context: context,
     barrierDismissible: true,
     barrierLabel: 'Close the room',
     barrierColor: Colors.black.withValues(alpha: 0.28),
     transitionDuration: const Duration(milliseconds: 380),
-    pageBuilder: (context, _, __) => _TopPanel(requests: requests),
+    pageBuilder: (context, _, __) => const _TopPanel(),
     transitionBuilder: (context, anim, _, child) => SlideTransition(
       position: Tween(begin: const Offset(0, -1), end: Offset.zero).animate(
           CurvedAnimation(
@@ -37,8 +36,7 @@ Future<void> showRoomSheet(BuildContext context, {bool requests = false}) {
 }
 
 class _TopPanel extends StatelessWidget {
-  const _TopPanel({required this.requests});
-  final bool requests;
+  const _TopPanel();
 
   @override
   Widget build(BuildContext context) {
@@ -64,7 +62,7 @@ class _TopPanel extends StatelessWidget {
             child: Padding(
               padding: EdgeInsets.only(top: mq.padding.top + 4),
               child: Column(mainAxisSize: MainAxisSize.min, children: [
-                Flexible(child: RoomPanel(startOnRequests: requests)),
+                const Flexible(child: RoomPanel()),
                 // The handle at the bottom: swipe up to close.
                 const _Grip(),
               ]),
@@ -95,28 +93,19 @@ Future<void> shareRoomInvite(BuildContext context, RoomSnapshot room) async {
 }
 
 class RoomPanel extends ConsumerStatefulWidget {
-  const RoomPanel({super.key, this.startOnRequests = false});
-  final bool startOnRequests;
+  const RoomPanel({super.key});
 
   @override
   ConsumerState<RoomPanel> createState() => _RoomPanelState();
 }
 
 class _RoomPanelState extends ConsumerState<RoomPanel> {
-  late bool _requests = widget.startOnRequests;
-
   @override
   Widget build(BuildContext context) {
     final s = ref.watch(roomProvider);
     final Widget body;
-    if (s.isStar && s.room != null && _requests) {
-      body = _Requests(
-          room: s.room!, onBack: () => setState(() => _requests = false));
-    } else if (s.isStar && s.room != null) {
-      body = _StarView(
-          room: s.room!, onRequests: () => setState(() => _requests = true));
-    } else if (s.isListener && s.room != null) {
-      body = _ListenerView(room: s.room!);
+    if (s.inRoom && s.room != null) {
+      body = _InRoom(room: s.room!, star: s.isStar);
     } else if (s.role == RoomRole.knocking) {
       body = _Knocking(name: s.knockingName ?? '');
     } else if (s.inRoom) {
@@ -266,45 +255,6 @@ class _Button extends StatelessWidget {
   }
 }
 
-class _RoundButton extends StatelessWidget {
-  const _RoundButton(
-      {required this.icon,
-      required this.label,
-      required this.onTap,
-      this.filled = false});
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-  final bool filled;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = NoorTheme.of(context);
-    return Semantics(
-      button: true,
-      label: label,
-      excludeSemantics: true,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () {
-          HapticFeedback.selectionClick();
-          onTap();
-        },
-        child: Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            color: filled ? t.ac : null,
-            shape: BoxShape.circle,
-            border: filled ? null : Border.all(color: t.soft, width: 0.8),
-          ),
-          child: Icon(icon, size: 18, color: filled ? t.onAc : t.ac),
-        ),
-      ),
-    );
-  }
-}
-
 /// Asks for this phone's name once (rooms show it to the others).
 class _NameField extends ConsumerStatefulWidget {
   const _NameField();
@@ -327,7 +277,7 @@ class _NameFieldState extends ConsumerState<_NameField> {
       key: const ValueKey('room-name'),
       controller: _c,
       textCapitalization: TextCapitalization.words,
-      maxLength: 24,
+      maxLength: kRoomNameMax,
       onChanged: (_) => setState(() {}),
       onSubmitted: (v) => ref.read(roomNameProvider.notifier).set(v),
       onTapOutside: (_) {
@@ -519,204 +469,6 @@ class _Knocking extends ConsumerWidget {
 
 // ── In the room ───────────────────────────────────────────────────────────
 
-/// The room's name (the star can rename it, up to five letters), its code
-/// (tap to copy) and Invite.
-class _RoomHeader extends ConsumerStatefulWidget {
-  const _RoomHeader({required this.room, this.canRename = false});
-  final RoomSnapshot room;
-  final bool canRename;
-  @override
-  ConsumerState<_RoomHeader> createState() => _RoomHeaderState();
-}
-
-class _RoomHeaderState extends ConsumerState<_RoomHeader> {
-  TextEditingController? _edit;
-
-  @override
-  void dispose() {
-    _edit?.dispose();
-    super.dispose();
-  }
-
-  void _save() {
-    final c = _edit;
-    if (c == null) return;
-    final name = cleanRoomName(c.text);
-    if (name.isNotEmpty && name != widget.room.name) {
-      ref.read(roomProvider.notifier).rename(name);
-    }
-    setState(() => _edit = null);
-    c.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final t = NoorTheme.of(context);
-    final room = widget.room;
-    final Widget name;
-    if (_edit != null) {
-      name = Row(children: [
-        Expanded(
-          child: TextField(
-            key: const ValueKey('room-rename'),
-            controller: _edit,
-            autofocus: true,
-            maxLength: kRoomNameMax,
-            textCapitalization: TextCapitalization.words,
-            onSubmitted: (_) => _save(),
-            style: noorSongTitleStyle(t.ac, size: 24),
-            decoration: const InputDecoration(
-                isDense: true, counterText: '', border: InputBorder.none),
-          ),
-        ),
-        IconButton(
-            key: const ValueKey('room-rename-save'),
-            tooltip: 'Save the name',
-            onPressed: _save,
-            icon: Icon(Icons.check_rounded, color: t.ac)),
-      ]);
-    } else {
-      name = Row(children: [
-        Flexible(
-          child: Text(cleanRoomName(room.name),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: noorSongTitleStyle(t.ac, size: 24)),
-        ),
-        if (widget.canRename)
-          IconButton(
-            key: const ValueKey('room-rename-edit'),
-            tooltip: 'Rename the room',
-            visualDensity: VisualDensity.compact,
-            onPressed: () =>
-                setState(() => _edit = TextEditingController(text: room.name)),
-            icon: Icon(Icons.edit_outlined, size: 18, color: t.mute),
-          ),
-      ]);
-    }
-    return Row(children: [
-      Expanded(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          name,
-          GestureDetector(
-            onTap: () {
-              Clipboard.setData(ClipboardData(text: room.code));
-              NoorToast.show(context, 'Room code copied');
-            },
-            child: Text(room.code,
-                semanticsLabel: 'Room code ${room.code.split('').join(' ')}',
-                style: TextStyle(
-                    color: t.mute,
-                    fontSize: 12,
-                    letterSpacing: 3,
-                    fontWeight: FontWeight.w700)),
-          ),
-        ]),
-      ),
-    ]);
-  }
-}
-
-class _Members extends ConsumerWidget {
-  const _Members({required this.room, required this.manage});
-  final RoomSnapshot room;
-  final bool manage;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final t = NoorTheme.of(context);
-    final me = ref.read(roomProvider.notifier).uid;
-    final away = ref.watch(roomProvider.select((s) => s.away));
-    return SizedBox(
-      height: 36,
-      child: ListView(scrollDirection: Axis.horizontal, children: [
-        for (final m in room.members)
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: GestureDetector(
-              onTap:
-                  manage && m.uid != me ? () => _manage(context, ref, m) : null,
-              child: Container(
-                padding: const EdgeInsets.fromLTRB(4, 4, 12, 4),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(
-                      color:
-                          m.uid == room.starUid ? RoomCapsule.gold : t.faint),
-                ),
-                child: Row(children: [
-                  Opacity(
-                      opacity: away.contains(m.uid) ? 0.4 : 1,
-                      child: RoomAvatar(member: m, size: 26)),
-                  const SizedBox(width: 6),
-                  Text(
-                      m.uid == me
-                          ? 'You'
-                          : away.contains(m.uid)
-                              ? '${m.name} · away'
-                              : m.name,
-                      style: TextStyle(
-                          color: t.ac,
-                          fontSize: 12.5,
-                          fontWeight: m.uid == room.starUid
-                              ? FontWeight.w700
-                              : FontWeight.w500)),
-                  if (m.uid == room.starUid) ...[
-                    const SizedBox(width: 4),
-                    const Icon(Icons.star_rounded,
-                        size: 14,
-                        color: RoomCapsule.gold,
-                        semanticLabel: 'star'),
-                  ],
-                ]),
-              ),
-            ),
-          ),
-      ]),
-    );
-  }
-
-  void _manage(BuildContext context, WidgetRef ref, RoomMember m) {
-    final t = NoorTheme.of(context);
-    final n = ref.read(roomProvider.notifier);
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: t.bg,
-      shape: RoundedRectangleBorder(
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-          side: BorderSide(color: t.ac, width: 0.8)),
-      builder: (c) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-          child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const SizedBox(height: 8),
-                _Heading(m.name),
-                const SizedBox(height: 16),
-                _Button('Make ${m.name} the star', icon: Icons.star_rounded,
-                    onTap: () {
-                  Navigator.pop(c);
-                  n.handOver(m);
-                }),
-                const SizedBox(height: 10),
-                _Button('Remove from the room', filled: false, onTap: () {
-                  Navigator.pop(c);
-                  n.remove(m.uid);
-                }),
-                const SizedBox(height: 10),
-                _Button('Block', danger: true, filled: false, onTap: () {
-                  Navigator.pop(c);
-                  n.block(m.uid, m.name);
-                }),
-              ]),
-        ),
-      ),
-    );
-  }
-}
-
 /// A round icon-only button (its name is read out and shows on a long
 /// press), with an optional count on its corner.
 class _IconAction extends StatelessWidget {
@@ -727,14 +479,14 @@ class _IconAction extends StatelessWidget {
     required this.onTap,
     this.filled = false,
     this.danger = false,
-    this.count = 0,
+    this.size = 46,
   });
+  final double size;
   final IconData icon;
   final String label;
   final VoidCallback? onTap;
   final bool filled;
   final bool danger;
-  final int count;
 
   @override
   Widget build(BuildContext context) {
@@ -750,7 +502,7 @@ class _IconAction extends StatelessWidget {
       child: Semantics(
         button: true,
         enabled: onTap != null,
-        label: count > 0 ? '$label, $count' : label,
+        label: label,
         excludeSemantics: true,
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
@@ -764,8 +516,8 @@ class _IconAction extends StatelessWidget {
             opacity: onTap == null ? 0.4 : 1,
             child: Stack(clipBehavior: Clip.none, children: [
               Container(
-                width: 46,
-                height: 46,
+                width: size,
+                height: size,
                 decoration: BoxDecoration(
                   color: filled && !danger ? t.ac : null,
                   shape: BoxShape.circle,
@@ -775,43 +527,14 @@ class _IconAction extends StatelessWidget {
                           color: danger ? red.withValues(alpha: 0.6) : t.soft,
                           width: 0.8),
                 ),
-                child: Icon(icon, size: 20, color: fg),
+                child: Icon(icon, size: size * 0.44, color: fg),
               ),
-              if (count > 0)
-                Positioned(
-                  right: -3,
-                  top: -3,
-                  child: Container(
-                    constraints: const BoxConstraints(minWidth: 18),
-                    height: 18,
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                        color: t.ac,
-                        borderRadius: BorderRadius.circular(9),
-                        border: Border.all(color: t.bg, width: 1.5)),
-                    child: Text('$count',
-                        style: TextStyle(
-                            color: t.onAc,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w800)),
-                  ),
-                ),
             ]),
           ),
         ),
       ),
     );
   }
-}
-
-/// A row of [_IconAction]s spread across the panel.
-class _Actions extends StatelessWidget {
-  const _Actions(this.children);
-  final List<Widget> children;
-  @override
-  Widget build(BuildContext context) =>
-      Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: children);
 }
 
 /// Songs in the app's own song-card design.
@@ -863,76 +586,56 @@ class _Songs extends StatelessWidget {
   }
 }
 
-class _StarView extends ConsumerWidget {
-  const _StarView({required this.room, required this.onRequests});
+/// The room: its name in a round pill at the top (the star renames it;
+/// everyone can leave), swiped right for Sync and Share; then what plays.
+class _InRoom extends ConsumerWidget {
+  const _InRoom({required this.room, required this.star});
   final RoomSnapshot room;
-  final VoidCallback onRequests;
+  final bool star;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = NoorTheme.of(context);
     final ps = ref.watch(playerProvider);
     final player = ref.read(playerProvider.notifier);
-    final n = ref.read(roomProvider.notifier);
-    final now = ps.displaySong;
-    final upNext = ps.queueIndex + 1 < ps.queue.length
-        ? ps.queue.sublist(ps.queueIndex + 1).take(12).toList()
-        : const <Song>[];
-    final alone = room.members.length <= 1;
-    final next = room.members
-        .where((m) => m.uid != room.starUid)
-        .map((m) => m.name)
-        .firstOrNull;
+    final Song? now;
+    final List<Song> upNext;
+    if (star) {
+      now = ps.displaySong;
+      upNext = ps.queueIndex + 1 < ps.queue.length
+          ? ps.queue.sublist(ps.queueIndex + 1).take(12).toList()
+          : const <Song>[];
+    } else {
+      now = room.play?.song;
+      upNext = room.queue.take(12).toList();
+    }
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+      padding: const EdgeInsets.fromLTRB(20, 6, 20, 12),
       child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const SizedBox(height: 6),
-            _RoomHeader(room: room, canRename: true),
-            const SizedBox(height: 12),
-            _Members(room: room, manage: true),
-            const SizedBox(height: 14),
-            _Actions([
-              _IconAction(
-                  icon: Icons.person_add_alt_1_rounded,
-                  label: 'Invite',
-                  filled: true,
-                  onTap: () => shareRoomInvite(context, room)),
-              _IconAction(
-                  key: const ValueKey('room-requests'),
-                  icon: Icons.inbox_rounded,
-                  label: 'Requests',
-                  count: room.waiting,
-                  onTap: room.waiting > 0 ? onRequests : null),
-              _IconAction(
-                  key: const ValueKey('room-sync-all'),
-                  icon: Icons.sync_rounded,
-                  label: 'Sync everyone',
-                  onTap: alone ? null : n.syncEveryone),
-              _IconAction(
-                  key: const ValueKey('room-leave'),
-                  icon: Icons.logout_rounded,
-                  label: alone
-                      ? 'End the room'
-                      : 'Leave the room ($next becomes the star)',
-                  danger: true,
-                  onTap: () {
-                    Navigator.of(context).maybePop();
-                    n.leave();
-                  }),
-            ]),
-            if (now?.isLocal ?? false) ...[
+            _NamePill(room: room, star: star),
+            if (star && (now?.isLocal ?? false)) ...[
               const SizedBox(height: 10),
               Text("This song is on your phone, so the others can't hear it.",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: t.mute, fontSize: 12)),
+            ],
+            if (!star && (room.play?.fromPhone ?? false)) ...[
+              const SizedBox(height: 10),
+              Text(
+                  '${room.starName} is playing a song from their phone, '
+                  'which only they can hear.',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: t.mute, fontSize: 12)),
             ],
             const SizedBox(height: 16),
             if (now != null)
               _Songs(
-                label: 'NOW PLAYING',
+                label: star
+                    ? 'NOW PLAYING'
+                    : '${room.starName.toUpperCase()} IS PLAYING',
                 songs: [now],
                 current: now,
                 playing: ps.status == NebulaPlayerStatus.playing,
@@ -945,144 +648,285 @@ class _StarView extends ConsumerWidget {
               songs: upNext,
               empty: 'Nothing queued after this song.',
               // The star plays any of them now.
-              onTap: (s) => player.playSong(s, queue: ps.queue),
+              onTap: star ? (s) => player.playSong(s, queue: ps.queue) : null,
             ),
           ]),
     );
   }
 }
 
-class _ListenerView extends ConsumerWidget {
-  const _ListenerView({required this.room});
+/// The room's name in a round bordered pill: edit (the star) and leave on
+/// the right. Editing turns them into save and cancel. Swiped right, it
+/// shows Sync and Share (and, for a listener, asking to be the star).
+class _NamePill extends ConsumerStatefulWidget {
+  const _NamePill({required this.room, required this.star});
   final RoomSnapshot room;
+  final bool star;
+  @override
+  ConsumerState<_NamePill> createState() => _NamePillState();
+}
+
+class _NamePillState extends ConsumerState<_NamePill> {
+  TextEditingController? _edit;
+  bool _actions = false;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final t = NoorTheme.of(context);
-    final n = ref.read(roomProvider.notifier);
-    ref.watch(roomProvider);
-    final ps = ref.watch(playerProvider);
-    final player = ref.read(playerProvider.notifier);
-    final play = room.play;
-    final asked = n.askedToBeStar;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-      child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const SizedBox(height: 6),
-            _RoomHeader(room: room),
-            const SizedBox(height: 12),
-            _Members(room: room, manage: false),
-            const SizedBox(height: 14),
-            _Actions([
-              _IconAction(
-                  key: const ValueKey('room-sync'),
-                  icon: Icons.sync_rounded,
-                  label: 'Sync now',
-                  filled: true,
-                  onTap: () {
-                    n.syncNow();
-                    NoorToast.show(
-                        context, 'Back in step with ${room.starName}');
-                  }),
-              _IconAction(
-                  key: const ValueKey('room-request-song'),
-                  icon: Icons.queue_music_rounded,
-                  label: 'Request a song',
-                  onTap: () {
-                    Navigator.of(context).pop();
-                    Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const SearchPage()));
-                    NoorToast.show(context,
-                        'Tap a song to ask ${room.starName} to play it');
-                  }),
-              _IconAction(
-                  key: const ValueKey('room-ask-star'),
-                  icon: asked ? Icons.star_rounded : Icons.star_outline_rounded,
-                  label: asked ? 'Asked to be the star' : 'Ask to be the star',
-                  onTap: asked ? null : n.askToBeStar),
-              _IconAction(
-                  icon: Icons.person_add_alt_1_rounded,
-                  label: 'Invite',
-                  onTap: () => shareRoomInvite(context, room)),
-              _IconAction(
-                  key: const ValueKey('room-leave'),
-                  icon: Icons.logout_rounded,
-                  label: 'Leave the room',
-                  danger: true,
-                  onTap: () {
-                    Navigator.of(context).maybePop();
-                    n.leave();
-                  }),
-            ]),
-            const SizedBox(height: 12),
-            const _Timing(),
-            const SizedBox(height: 14),
-            if (play?.fromPhone ?? false)
-              Text(
-                  '${room.starName} is playing a song from their phone, '
-                  'which only they can hear.',
-                  style: TextStyle(color: t.mute, fontSize: 12.5))
-            else if (play?.song != null)
-              _Songs(
-                label: '${room.starName.toUpperCase()} IS PLAYING',
-                songs: [play!.song!],
-                current: play.song,
-                playing: ps.status == NebulaPlayerStatus.playing,
-                // Play / pause stay this phone's own.
-                onPlayPause: player.togglePlay,
-                onTap: (_) => player.togglePlay(),
-              ),
-            if (room.queue.isNotEmpty) ...[
-              const SizedBox(height: 6),
-              _Songs(label: 'UP NEXT', songs: room.queue.take(12).toList()),
-            ],
-          ]),
-    );
+  void dispose() {
+    _edit?.dispose();
+    super.dispose();
   }
-}
 
-// ── The star's requests ───────────────────────────────────────────────────
+  void _save() {
+    final c = _edit;
+    if (c == null) return;
+    final name = cleanRoomName(c.text);
+    if (name.isNotEmpty && name != widget.room.name) {
+      ref.read(roomProvider.notifier).rename(name);
+    }
+    setState(() => _edit = null);
+    c.dispose();
+  }
 
-class _Requests extends ConsumerStatefulWidget {
-  const _Requests({required this.room, required this.onBack});
-  final RoomSnapshot room;
-  final VoidCallback onBack;
-  @override
-  ConsumerState<_Requests> createState() => _RequestsState();
-}
-
-class _RequestsState extends ConsumerState<_Requests> {
-  int? _tab;
+  void _cancel() {
+    final c = _edit;
+    setState(() => _edit = null);
+    c?.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final t = NoorTheme.of(context);
-    final r = widget.room;
+    final room = widget.room;
     final n = ref.read(roomProvider.notifier);
-    final songs = r.asks.where((a) => a.isSong).toList();
-    final stars = r.asks.where((a) => !a.isSong).toList();
-    final counts = [songs.length, r.knocks.length, stars.length];
-    final tab = _tab ?? (counts.indexWhere((c) => c > 0).clamp(0, 2));
-    const names = ['Songs', 'Joining', 'Star'];
+    Widget round(IconData icon, String label, VoidCallback? onTap,
+            {Key? key, bool danger = false, bool filled = false}) =>
+        Padding(
+          padding: const EdgeInsets.only(left: 6),
+          child: SizedBox(
+            width: 40,
+            height: 40,
+            child: _IconAction(
+                key: key,
+                icon: icon,
+                label: label,
+                onTap: onTap,
+                danger: danger,
+                filled: filled,
+                size: 40),
+          ),
+        );
 
-    Widget card(
-            {required Widget lead,
-            required String title,
-            required String sub,
-            required List<Widget> actions,
-            bool script = false}) =>
+    final Widget row;
+    if (_edit != null) {
+      row = Row(children: [
+        Expanded(
+          child: TextField(
+            key: const ValueKey('room-rename'),
+            controller: _edit,
+            autofocus: true,
+            maxLength: kRoomNameMax,
+            textCapitalization: TextCapitalization.words,
+            onSubmitted: (_) => _save(),
+            style: noorSongTitleStyle(t.ac, size: 22),
+            decoration: const InputDecoration(
+                isDense: true, counterText: '', border: InputBorder.none),
+          ),
+        ),
+        round(Icons.check_rounded, 'Save the name', _save,
+            key: const ValueKey('room-rename-save'), filled: true),
+        round(Icons.close_rounded, 'Cancel', _cancel,
+            key: const ValueKey('room-rename-cancel')),
+      ]);
+    } else if (_actions) {
+      final asked = n.askedToBeStar;
+      row = Row(children: [
+        Expanded(
+          child: Text('Code ${room.code}',
+              style: TextStyle(
+                  color: t.mute,
+                  fontSize: 12.5,
+                  letterSpacing: 1.5,
+                  fontWeight: FontWeight.w700)),
+        ),
+        round(Icons.sync_rounded, widget.star ? 'Sync everyone' : 'Sync now',
+            () {
+          if (widget.star) {
+            n.syncEveryone();
+          } else {
+            n.syncNow();
+            NoorToast.show(context, 'Back in step with ${room.starName}');
+          }
+        },
+            key: ValueKey(widget.star ? 'room-sync-all' : 'room-sync'),
+            filled: true),
+        round(Icons.share_rounded, 'Share the room',
+            () => shareRoomInvite(context, room),
+            key: const ValueKey('room-share')),
+        if (!widget.star)
+          round(
+              asked ? Icons.star_rounded : Icons.star_outline_rounded,
+              asked ? 'Asked to be the star' : 'Ask to be the star',
+              asked ? null : n.askToBeStar,
+              key: const ValueKey('room-ask-star')),
+      ]);
+    } else {
+      final alone = room.members.length <= 1;
+      row = Row(children: [
+        Expanded(
+          child: Text(cleanRoomName(room.name),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: noorSongTitleStyle(t.ac, size: 24)),
+        ),
+        if (widget.star)
+          round(
+              Icons.edit_outlined,
+              'Rename the room',
+              () => setState(() => _edit =
+                  TextEditingController(text: cleanRoomName(room.name))),
+              key: const ValueKey('room-rename-edit')),
+        round(Icons.logout_rounded,
+            widget.star && alone ? 'End the room' : 'Leave the room', () {
+          Navigator.of(context).maybePop();
+          n.leave();
+        }, key: const ValueKey('room-leave'), danger: true),
+      ]);
+    }
+    return GestureDetector(
+      key: const ValueKey('room-name-pill'),
+      behavior: HitTestBehavior.opaque,
+      onHorizontalDragEnd: _edit != null
+          ? null
+          : (d) {
+              final v = d.primaryVelocity ?? 0;
+              if (v > 150 && !_actions) setState(() => _actions = true);
+              if (v < -150 && _actions) setState(() => _actions = false);
+            },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        height: 54,
+        padding: const EdgeInsets.fromLTRB(18, 0, 7, 0),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(27),
+          border: Border.all(color: t.ac, width: 1),
+        ),
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 220),
+          transitionBuilder: (child, a) => FadeTransition(
+              opacity: a,
+              child: SlideTransition(
+                  position: Tween(
+                          begin: Offset(_actions ? -0.15 : 0.15, 0),
+                          end: Offset.zero)
+                      .animate(a),
+                  child: child)),
+          child: KeyedSubtree(
+              key: ValueKey('${_edit != null}-$_actions'), child: row),
+        ),
+      ),
+    );
+  }
+}
+
+/// Make the star, remove or block someone (the star, from a circle on the
+/// player's room pill).
+void showMemberActions(BuildContext context, WidgetRef ref, RoomMember m) {
+  final t = NoorTheme.of(context);
+  final n = ref.read(roomProvider.notifier);
+  showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: t.bg,
+    shape: RoundedRectangleBorder(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        side: BorderSide(color: t.ac, width: 0.8)),
+    builder: (c) => SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+        child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const _Grip(),
+              _Heading(m.name),
+              const SizedBox(height: 16),
+              _Button('Make ${m.name} the star', icon: Icons.star_rounded,
+                  onTap: () {
+                Navigator.pop(c);
+                n.handOver(m);
+              }),
+              const SizedBox(height: 10),
+              _Button('Remove from the room', filled: false, onTap: () {
+                Navigator.pop(c);
+                n.remove(m.uid);
+              }),
+              const SizedBox(height: 10),
+              _Button('Block', danger: true, filled: false, onTap: () {
+                Navigator.pop(c);
+                n.block(m.uid, m.name);
+              }),
+            ]),
+      ),
+    ),
+  );
+}
+
+// ── Requests: a pop-up in the middle of the screen ─────────────────────────
+
+/// The star's waiting requests (someone wants in, a song, the star) in a
+/// pop-up in the middle of the screen, to approve or turn down there and
+/// then. Closes by itself once nothing is left.
+Future<void> showRoomRequests(BuildContext context) {
+  return showGeneralDialog<void>(
+    context: context,
+    barrierDismissible: true,
+    barrierLabel: 'Close the requests',
+    barrierColor: Colors.black.withValues(alpha: 0.35),
+    transitionDuration: const Duration(milliseconds: 260),
+    pageBuilder: (context, _, __) => const _RequestsDialog(),
+    transitionBuilder: (context, a, _, child) => FadeTransition(
+      opacity: a,
+      child: ScaleTransition(
+          scale: Tween(begin: 0.92, end: 1.0)
+              .animate(CurvedAnimation(parent: a, curve: Curves.easeOutBack)),
+          child: child),
+    ),
+  );
+}
+
+class _RequestsDialog extends ConsumerWidget {
+  const _RequestsDialog();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = NoorTheme.of(context);
+    final s = ref.watch(roomProvider);
+    final room = s.room;
+    final n = ref.read(roomProvider.notifier);
+    final empty =
+        room == null || !s.isStar || (room.knocks.isEmpty && room.asks.isEmpty);
+    if (empty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (context.mounted) Navigator.of(context).maybePop();
+      });
+      return const SizedBox.shrink();
+    }
+
+    Widget item({
+      required Widget lead,
+      required String title,
+      required String sub,
+      required List<Widget> actions,
+      bool script = false,
+    }) =>
         Container(
           margin: const EdgeInsets.only(bottom: 10),
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.fromLTRB(10, 10, 6, 10),
           decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: t.faint)),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: t.ac, width: 1)),
           child: Row(children: [
             lead,
-            const SizedBox(width: 12),
+            const SizedBox(width: 10),
             Expanded(
               child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1091,7 +935,7 @@ class _RequestsState extends ConsumerState<_Requests> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: script
-                            ? noorSongTitleStyle(t.ac, size: 19)
+                            ? noorSongTitleStyle(t.ac, size: 18)
                             : TextStyle(
                                 color: t.ac,
                                 fontSize: 14,
@@ -1105,216 +949,104 @@ class _RequestsState extends ConsumerState<_Requests> {
             ...actions,
           ]),
         );
-
-    final List<Widget> items;
-    if (tab == 0) {
-      items = [
-        for (final a in songs)
-          Column(children: [
-            card(
-              script: true,
-              lead: ClipOval(
-                  child: SizedBox(
-                      width: 44,
-                      height: 44,
-                      child: NoorArtwork(url: a.song!.thumbnailUrl))),
-              title: a.song!.title,
-              sub: '${a.name} would like this',
-              actions: [
-                _RoundButton(
-                    icon: Icons.close_rounded,
-                    label: 'Decline',
-                    onTap: () => n.decline(a)),
-                const SizedBox(width: 8),
-                _RoundButton(
-                    icon: Icons.playlist_add_rounded,
-                    label: 'Add to the end',
-                    onTap: () => n.acceptSong(a, next: false)),
-                const SizedBox(width: 8),
-                _RoundButton(
-                    icon: Icons.playlist_play_rounded,
-                    label: 'Play next',
-                    filled: true,
-                    onTap: () => n.acceptSong(a, next: true)),
-              ],
-            ),
-          ]),
-      ];
-    } else if (tab == 1) {
-      items = [
-        for (final k in r.knocks)
-          Column(children: [
-            card(
-              lead: RoomAvatar(
-                  member: RoomMember(k.uid, k.name, k.at, k.at), size: 40),
-              title: k.name,
-              sub: 'wants to join',
-              actions: [
-                _RoundButton(
-                    icon: Icons.close_rounded,
-                    label: 'Not now',
-                    onTap: () => n.notNow(k)),
-                const SizedBox(width: 8),
-                _RoundButton(
-                    icon: Icons.check_rounded,
-                    label: 'Let in',
-                    filled: true,
-                    onTap: () => n.letIn(k)),
-              ],
-            ),
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton(
-                onPressed: () => n.block(k.uid, k.name),
-                child: const Text('Block this phone',
-                    style: TextStyle(color: Color(0xFFB23A2E), fontSize: 12.5)),
-              ),
-            ),
-          ]),
-      ];
-    } else {
-      items = [
-        for (final a in stars)
-          card(
-            lead: RoomAvatar(
-                member: RoomMember(a.uid, a.name, a.at, a.at), size: 40),
-            title: '${a.name} asks to be the star',
-            sub: "You'd become a listener",
-            actions: [
-              _RoundButton(
-                  icon: Icons.close_rounded,
-                  label: 'Decline',
-                  onTap: () => n.decline(a)),
-              const SizedBox(width: 8),
-              _RoundButton(
-                  icon: Icons.star_rounded,
-                  label: 'Hand over',
-                  filled: true,
-                  onTap: () {
-                    final m = r.members.where((m) => m.uid == a.uid);
-                    if (m.isNotEmpty) n.handOver(m.first);
-                    n.decline(a);
-                  }),
-            ],
-          ),
-      ];
-    }
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
-      child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const SizedBox(height: 8),
-            Row(children: [
-              IconButton(
-                  tooltip: 'Back to the room',
-                  onPressed: widget.onBack,
-                  icon: Icon(Icons.arrow_back_rounded, color: t.ac)),
-              Expanded(
-                  child: Text('Requests',
-                      textAlign: TextAlign.center,
-                      style: noorSongTitleStyle(t.ac, size: 28))),
-              const SizedBox(width: 48),
-            ]),
-            const SizedBox(height: 10),
-            Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              for (var i = 0; i < 3; i++)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: ChoiceChip(
-                    label: Text('${names[i]} · ${counts[i]}'),
-                    selected: tab == i,
-                    showCheckmark: false,
-                    onSelected: (_) => setState(() => _tab = i),
-                    selectedColor: t.ac,
-                    backgroundColor: t.bg,
-                    labelStyle: TextStyle(
-                        color: tab == i ? t.onAc : t.ac,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 13),
-                    shape: StadiumBorder(
-                        side: BorderSide(color: t.soft, width: 0.8)),
-                  ),
-                ),
-            ]),
-            const SizedBox(height: 14),
-            if (items.isEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 24),
-                child: Text('Nothing waiting here.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: t.mute, fontSize: 13)),
-              )
-            else
-              ...items,
-          ]),
-    );
-  }
-}
-
-/// Hear an echo? This phone's timing, tuned by ear in 20 ms steps (phones
-/// take different times to get sound out of the speaker): one slim line.
-class _Timing extends ConsumerWidget {
-  const _Timing();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final t = NoorTheme.of(context);
-    final tune = ref.watch(roomTuneProvider);
-    final n = ref.read(roomTuneProvider.notifier);
-    Widget step(IconData icon, String label, int ms, Key key) => IconButton(
-          key: key,
-          tooltip: label,
-          visualDensity: VisualDensity.compact,
-          onPressed: () {
-            HapticFeedback.selectionClick();
-            n.nudge(ms);
-          },
-          icon: Icon(icon, size: 18, color: t.ac),
+    Widget act(IconData icon, String label, VoidCallback onTap,
+            {bool filled = false, bool danger = false}) =>
+        Padding(
+          padding: const EdgeInsets.only(left: 6),
+          child: _IconAction(
+              icon: icon,
+              label: label,
+              onTap: onTap,
+              filled: filled,
+              danger: danger,
+              size: 38),
         );
-    return Container(
-      height: 44,
-      padding: const EdgeInsets.only(left: 14),
-      decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: t.faint)),
-      child: Row(children: [
-        Tooltip(
-          message: 'Hear an echo? If this phone sounds behind, tap +; '
-              'ahead, tap −. It stays set for this phone.',
-          triggerMode: TooltipTriggerMode.tap,
-          child: Row(children: [
-            Icon(Icons.graphic_eq_rounded, size: 18, color: t.mute),
-            const SizedBox(width: 8),
-            Text('TIMING',
-                style: TextStyle(
-                    color: t.mute,
-                    fontSize: 11,
-                    letterSpacing: 2,
-                    fontWeight: FontWeight.w700)),
-          ]),
-        ),
-        const Spacer(),
-        step(Icons.remove_rounded, 'Later', -20,
-            const ValueKey('room-tune-later')),
-        GestureDetector(
-          onLongPress: () => n.set(0),
-          child: SizedBox(
-            width: 64,
-            child: Text(
-                tune == 0 ? '0 ms' : '${tune > 0 ? '+' : '−'}${tune.abs()} ms',
-                key: const ValueKey('room-tune-value'),
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                    color: t.ac, fontSize: 13, fontWeight: FontWeight.w700)),
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: Material(
+          color: t.bg,
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(28),
+              side: BorderSide(color: t.ac, width: 1)),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+                maxWidth: 520,
+                maxHeight: MediaQuery.sizeOf(context).height * 0.7),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(16, 18, 16, 8),
+              child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text('Requests',
+                        textAlign: TextAlign.center,
+                        style: noorSongTitleStyle(t.ac, size: 28)),
+                    const SizedBox(height: 14),
+                    for (final k in room.knocks)
+                      item(
+                        lead: RoomAvatar(
+                            member: RoomMember(k.uid, k.name, k.at, k.at),
+                            size: 40),
+                        title: k.name,
+                        sub: 'wants to join',
+                        actions: [
+                          act(Icons.block_rounded, 'Block this phone',
+                              () => n.block(k.uid, k.name),
+                              danger: true),
+                          act(Icons.close_rounded, 'Not now',
+                              () => n.notNow(k)),
+                          act(Icons.check_rounded, 'Let in', () => n.letIn(k),
+                              filled: true),
+                        ],
+                      ),
+                    for (final a in room.asks.where((a) => a.isSong))
+                      item(
+                        script: true,
+                        lead: ClipOval(
+                            child: SizedBox(
+                                width: 40,
+                                height: 40,
+                                child: NoorArtwork(url: a.song!.thumbnailUrl))),
+                        title: a.song!.title,
+                        sub: '${a.name} would like this',
+                        actions: [
+                          act(Icons.close_rounded, 'Decline',
+                              () => n.decline(a)),
+                          act(Icons.playlist_add_rounded, 'Add to the end',
+                              () => n.acceptSong(a, next: false)),
+                          act(Icons.playlist_play_rounded, 'Play next',
+                              () => n.acceptSong(a, next: true),
+                              filled: true),
+                        ],
+                      ),
+                    for (final a in room.asks.where((a) => !a.isSong))
+                      item(
+                        lead: RoomAvatar(
+                            member: RoomMember(a.uid, a.name, a.at, a.at),
+                            size: 40),
+                        title: '${a.name} asks to be the star',
+                        sub: "You'd become a listener",
+                        actions: [
+                          act(Icons.close_rounded, 'Decline',
+                              () => n.decline(a)),
+                          act(Icons.star_rounded, 'Hand over', () {
+                            final m = room.members.where((m) => m.uid == a.uid);
+                            if (m.isNotEmpty) n.handOver(m.first);
+                            n.decline(a);
+                          }, filled: true),
+                        ],
+                      ),
+                    TextButton(
+                        onPressed: () => Navigator.of(context).maybePop(),
+                        child: Text('Later',
+                            style: TextStyle(color: t.mute, fontSize: 13))),
+                  ]),
+            ),
           ),
         ),
-        step(Icons.add_rounded, 'Earlier', 20,
-            const ValueKey('room-tune-earlier')),
-        const SizedBox(width: 4),
-      ]),
+      ),
     );
   }
 }

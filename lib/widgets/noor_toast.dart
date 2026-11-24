@@ -142,11 +142,14 @@ class _IslandState extends State<_Island> with TickerProviderStateMixin {
     const ink = Color(0xFFF6EFE8);
     const gold = Color(0xFFD8B06A);
 
+    // Centred on the screen whatever sits on either side (the logo on one,
+    // two buttons on the other), over everything.
+    final screen = MediaQuery.sizeOf(context).width;
+    final width = min(screen - 32, 340.0);
     return Positioned(
       top: top,
-      // Between the logo (left) and the search and settings buttons.
-      left: 20 + kNoorHeaderSize + 8,
-      right: 14 + 2 * kNoorHeaderSize + 16,
+      left: (screen - width) / 2,
+      width: width,
       height: kNoorHeaderSize,
       // A Material ancestor so the text gets the app's font and style.
       child: Material(

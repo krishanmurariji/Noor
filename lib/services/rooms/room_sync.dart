@@ -108,10 +108,10 @@ const kRoomSeekMs = 700;
 
 /// Closer than [kRoomSeekMs] but more than this, it plays a little faster
 /// or slower until it's back with the star (no audible jump).
-const kRoomNudgeMs = 35;
+const kRoomNudgeMs = 20;
 
 /// Back within this, normal speed again.
-const kRoomInSyncMs = 12;
+const kRoomInSyncMs = 8;
 
 /// The most a listener speeds up or slows down (6 %, with the pitch kept).
 const kRoomMaxNudge = 0.06;
@@ -226,6 +226,9 @@ class RoomFollower {
   bool _force = false;
   int? _syncSeen;
 
+  /// The next seek is the one-off settling seek (no second one after it).
+  bool _settleSeek = false;
+
   /// "Sync now": on the next tick, jump straight to the star's place.
   void resync() => _force = true;
 
@@ -287,6 +290,15 @@ class RoomFollower {
         leadMs = (leadMs - (d * 0.5).round().clamp(-200, 200)).clamp(0, 1500);
         log?.call('[R] sync: landed ${d > 0 ? '+' : ''}${d}ms off, '
             'seek lead now ${leadMs}ms');
+        // A seek right after a song loads (or a jump) lands roughly; once
+        // the song plays steadily, one more lands where it should, the way
+        // "Sync now" does, instead of creeping there slowly.
+        if (d.abs() > 25 && !_settleSeek) {
+          _force = true;
+          _settleSeek = true;
+        } else {
+          _settleSeek = false;
+        }
       }
     }
     if (step.driftMs != null && nowMs - _lastLog > 6000) {

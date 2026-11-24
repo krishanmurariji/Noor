@@ -259,7 +259,7 @@ void main() {
         all.events += r.events;
         expect(r.pct(.95), lessThan(60), reason: 'seed $seed: ${r.describe()}');
         // A seek per jump the star makes, a few more to learn the lead.
-        expect(r.seeks, lessThanOrEqualTo(r.events + 4),
+        expect(r.seeks, lessThanOrEqualTo(r.events * 2 + 4),
             reason: 'seed $seed: ${r.describe()}');
       }
       // ignore: avoid_print
@@ -280,7 +280,7 @@ void main() {
         all.events += r.events;
         expect(r.pct(.95), lessThan(120),
             reason: 'seed $seed: ${r.describe()}');
-        expect(r.seeks, lessThanOrEqualTo(r.events + 5),
+        expect(r.seeks, lessThanOrEqualTo(r.events * 2 + 5),
             reason: 'seed $seed: ${r.describe()}');
       }
       // ignore: avoid_print
@@ -300,7 +300,7 @@ void main() {
             seconds: 300,
             script: false);
         expect(r.pct(.95), lessThan(45), reason: 'seed $seed: ${r.describe()}');
-        expect(r.seeks, lessThanOrEqualTo(3),
+        expect(r.seeks, lessThanOrEqualTo(4),
             reason: 'seed $seed: ${r.describe()}');
       }
     });

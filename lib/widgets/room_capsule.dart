@@ -6,6 +6,7 @@ import '../providers/room_provider.dart';
 import '../services/rooms/room.dart';
 import '../theme/noor_palette.dart';
 import '../theme/noor_song_card.dart';
+import 'noor_toast.dart';
 import 'room_sheet.dart';
 
 /// Room colours that stay the same in light and dark mode.
@@ -16,140 +17,472 @@ class RoomCapsule {
   static const live = Color(0xFFE25A52);
 }
 
-/// The room on the player: a full-width pill under the header. The room's
-/// name on the left, who is in it on the right (three faces, then "+N"),
-/// and a count on its top-left corner when people or songs are waiting.
-/// Out of a room it offers to listen together. Tap: the room panel.
-class RoomPill extends ConsumerWidget {
+/// The room on the player: a full-width pill under the header.
+///
+/// * No room: "Listen together", and "Start · Join →" opens a code field
+///   with Join (once a whole code is typed) and Create (the room's code
+///   then shows in the field, with a thumbs-up to carry on).
+/// * In a room: the others as overlapping initials on the left (five,
+///   then "+N"; the code while nobody has joined), the star on the right
+///   (★ and their name). Waiting requests: a count on its top-left corner.
+///   Tap: the room panel. Swipe right: the pill slides almost out and
+///   everyone shows as circles to scroll through; tap one for the full
+///   name (the star long-presses for make star / remove / block). Swipe
+///   left (or tap the pill's edge) to bring it back.
+class RoomPill extends ConsumerStatefulWidget {
   const RoomPill({super.key});
 
   static const height = 46.0;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final t = NoorTheme.of(context);
+  ConsumerState<RoomPill> createState() => _RoomPillState();
+}
+
+class _RoomPillState extends ConsumerState<RoomPill> {
+  bool _open = false; // no room: the code field is showing
+  bool _reveal = false; // in a room: swiped right, everyone's circles show
+  bool _created = false; // just created: the code shows with a thumbs-up
+  String? _named; // the circle showing its full name
+  bool _busy = false;
+  String? _error;
+  final _code = TextEditingController();
+  final _name = TextEditingController();
+
+  @override
+  void dispose() {
+    _code.dispose();
+    _name.dispose();
+    super.dispose();
+  }
+
+  Future<void> _run(Future<String?> Function() f) async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    final why = await f();
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _error = why;
+    });
+    if (why != null) NoorToast.show(context, why);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final s = ref.watch(roomProvider);
-    final room = s.room;
-    final me = ref.read(roomProvider.notifier).uid;
-    final List<Widget> row;
-    String label;
-    var waiting = 0;
-    if (s.inRoom && room != null) {
-      final here = room.members.where((m) => !s.away.contains(m.uid)).toList();
-      waiting = s.isStar ? room.waiting : 0;
-      label = 'Room ${room.name}, ${here.length} here'
-          '${waiting > 0 ? ', $waiting waiting' : ''}';
-      row = [
-        Container(
-            width: 7,
-            height: 7,
-            decoration: const BoxDecoration(
-                color: RoomCapsule.live, shape: BoxShape.circle)),
-        const SizedBox(width: 10),
-        // At most five letters: always shown whole.
-        Text(cleanRoomName(room.name),
-            maxLines: 1, style: noorSongTitleStyle(t.ac, size: 22)),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-              s.isStar ? "· you're the star" : '· with ${room.starName}',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: t.mute, fontSize: 12)),
-        ),
-        const SizedBox(width: 8),
-        _Faces(
-          members: [
-            ...room.members.where((m) => m.uid == room.starUid),
-            ...room.members.where((m) => m.uid != room.starUid),
-          ],
-          away: s.away,
-          me: me,
-        ),
-      ];
+    // Leaving the room (or never having one) puts the pill back to rest.
+    if (!s.inRoom && _reveal) _reveal = false;
+    if (!s.inRoom && s.role != RoomRole.knocking && _created) _created = false;
+    if (s.inRoom && _open) _open = false;
+    final Widget child;
+    if (s.inRoom && s.room != null) {
+      child = _inRoom(s);
     } else if (s.role == RoomRole.knocking) {
-      label = 'Asking to join ${s.knockingName ?? ''}';
-      row = [
-        const _Pulse(),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text('Asking to join · ${s.knockingName ?? ''}',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                  color: t.ac, fontSize: 13.5, fontWeight: FontWeight.w600)),
-        ),
-      ];
+      child = _frame(_knocking(s));
+    } else if (_open) {
+      child = _frame(_join());
     } else {
-      label = 'Listen together';
-      row = [
-        Icon(Icons.people_alt_outlined, size: 19, color: t.ac),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text('Listen together',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: noorSongTitleStyle(t.ac, size: 20)),
-        ),
-        Text('Start or join',
-            maxLines: 1, style: TextStyle(color: t.mute, fontSize: 12)),
-        Icon(Icons.chevron_right_rounded, size: 20, color: t.mute),
-      ];
+      child = _frame(_rest(), onTap: () => setState(() => _open = true));
     }
-    return Semantics(
-      button: true,
-      label: label,
-      excludeSemantics: true,
-      child: GestureDetector(
-        key: const ValueKey('room-pill'),
-        behavior: HitTestBehavior.opaque,
-        onTap: () {
-          HapticFeedback.selectionClick();
-          showRoomSheet(context, requests: waiting > 0);
-        },
-        child: Stack(clipBehavior: Clip.none, children: [
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 260),
-            height: height,
-            padding: const EdgeInsets.fromLTRB(16, 0, 8, 0),
-            decoration: BoxDecoration(
-              color: t.bg,
-              borderRadius: BorderRadius.circular(height / 2),
-              border: Border.all(
-                  color: s.inRoom ? t.ac : t.soft, width: s.inRoom ? 1 : 0.8),
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 240),
+      curve: Curves.easeOutCubic,
+      alignment: Alignment.topCenter,
+      child: child,
+    );
+  }
+
+  // ── Pieces ──────────────────────────────────────────────────────────────
+
+  Widget _frame(Widget row,
+      {VoidCallback? onTap, Key key = const ValueKey('room-pill')}) {
+    final t = NoorTheme.of(context);
+    return GestureDetector(
+      key: key,
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap == null
+          ? null
+          : () {
+              HapticFeedback.selectionClick();
+              onTap();
+            },
+      child: Container(
+        height: RoomPill.height,
+        padding: const EdgeInsets.fromLTRB(14, 0, 6, 0),
+        decoration: BoxDecoration(
+          color: t.bg,
+          borderRadius: BorderRadius.circular(RoomPill.height / 2),
+          border: Border.all(color: t.ac, width: 1),
+        ),
+        child: row,
+      ),
+    );
+  }
+
+  Widget _round(IconData icon, String label, VoidCallback? onTap,
+      {bool filled = false, Key? key}) {
+    final t = NoorTheme.of(context);
+    return Tooltip(
+      message: label,
+      child: Semantics(
+        button: true,
+        label: label,
+        enabled: onTap != null,
+        excludeSemantics: true,
+        child: GestureDetector(
+          key: key,
+          behavior: HitTestBehavior.opaque,
+          onTap: onTap == null
+              ? null
+              : () {
+                  HapticFeedback.selectionClick();
+                  onTap();
+                },
+          child: Opacity(
+            opacity: onTap == null ? 0.35 : 1,
+            child: Container(
+              width: 36,
+              height: 36,
+              margin: const EdgeInsets.only(left: 4),
+              decoration: BoxDecoration(
+                color: filled ? t.ac : null,
+                shape: BoxShape.circle,
+                border: filled ? null : Border.all(color: t.soft, width: 0.8),
+              ),
+              child: Icon(icon, size: 18, color: filled ? t.onAc : t.ac),
             ),
-            child: Row(children: row),
           ),
-          // Waiting requests: a count on the pill's top-left corner.
-          if (waiting > 0)
+        ),
+      ),
+    );
+  }
+
+  Widget _rest() {
+    final t = NoorTheme.of(context);
+    return Row(children: [
+      Icon(Icons.people_alt_outlined, size: 19, color: t.ac),
+      const SizedBox(width: 10),
+      Expanded(
+        child: Text('Listen together',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: noorSongTitleStyle(t.ac, size: 20)),
+      ),
+      Text('Start · Join',
+          maxLines: 1, style: TextStyle(color: t.mute, fontSize: 12)),
+      const SizedBox(width: 2),
+      Icon(Icons.arrow_forward_rounded, size: 18, color: t.mute),
+      const SizedBox(width: 6),
+    ]);
+  }
+
+  /// The code field with Join and Create (or, the first time, the name).
+  Widget _join() {
+    final t = NoorTheme.of(context);
+    final rooms = ref.read(roomProvider.notifier);
+    final name = ref.watch(roomNameProvider);
+    if (name.isEmpty) {
+      return Row(children: [
+        _round(
+            Icons.close_rounded, 'Close', () => setState(() => _open = false)),
+        const SizedBox(width: 8),
+        Expanded(
+          child: TextField(
+            key: const ValueKey('room-name'),
+            controller: _name,
+            autofocus: true,
+            maxLength: kRoomNameMax,
+            textCapitalization: TextCapitalization.words,
+            onChanged: (_) => setState(() {}),
+            onSubmitted: (v) => ref.read(roomNameProvider.notifier).set(v),
+            style: TextStyle(
+                color: t.ac, fontSize: 15, fontWeight: FontWeight.w600),
+            decoration: InputDecoration(
+                isDense: true,
+                counterText: '',
+                border: InputBorder.none,
+                hintText: 'Your name first',
+                hintStyle:
+                    TextStyle(color: t.mute, fontWeight: FontWeight.w400)),
+          ),
+        ),
+        _round(
+            Icons.check_rounded,
+            'Save my name',
+            _name.text.trim().isEmpty
+                ? null
+                : () => ref.read(roomNameProvider.notifier).set(_name.text),
+            filled: true,
+            key: const ValueKey('room-name-save')),
+      ]);
+    }
+    final code = cleanRoomCode(_code.text);
+    return Row(children: [
+      _round(Icons.close_rounded, 'Close', () => setState(() => _open = false)),
+      const SizedBox(width: 8),
+      Expanded(
+        child: TextField(
+          key: const ValueKey('room-code'),
+          controller: _code,
+          maxLength: 7,
+          autocorrect: false,
+          textCapitalization: TextCapitalization.characters,
+          onChanged: (_) => setState(() => _error = null),
+          style: TextStyle(
+              color: t.ac,
+              fontSize: 16,
+              letterSpacing: 3,
+              fontWeight: FontWeight.w700),
+          decoration: InputDecoration(
+              isDense: true,
+              counterText: '',
+              border: InputBorder.none,
+              hintText: _error ?? 'Room code',
+              hintStyle: TextStyle(
+                  color: _error != null ? const Color(0xFFB23A2E) : t.mute,
+                  letterSpacing: 0,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w400)),
+        ),
+      ),
+      _round(Icons.login_rounded, 'Join',
+          _busy || code == null ? null : () => _run(() => rooms.knock(code)),
+          key: const ValueKey('room-join')),
+      _round(
+          Icons.add_rounded,
+          'Create',
+          _busy || !rooms.available
+              ? null
+              : () async {
+                  await _run(rooms.start);
+                  if (mounted && _error == null)
+                    setState(() => _created = true);
+                },
+          filled: true,
+          key: const ValueKey('room-start')),
+    ]);
+  }
+
+  Widget _knocking(RoomState s) {
+    final t = NoorTheme.of(context);
+    return Row(children: [
+      const _Pulse(),
+      const SizedBox(width: 10),
+      Expanded(
+        child: Text('Asking to join · ${s.knockingName ?? ''}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+                color: t.ac, fontSize: 13.5, fontWeight: FontWeight.w600)),
+      ),
+      _round(Icons.close_rounded, 'Stop asking',
+          () => ref.read(roomProvider.notifier).cancelKnock()),
+    ]);
+  }
+
+  Widget _starName(RoomSnapshot room, String me) {
+    final t = NoorTheme.of(context);
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      Icon(Icons.star_rounded, size: 18, color: t.ac, semanticLabel: 'star'),
+      const SizedBox(width: 5),
+      ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 150),
+        child: Text(
+            room.starName.length > kRoomNameMax
+                ? room.starName.substring(0, kRoomNameMax)
+                : room.starName,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: noorSongTitleStyle(t.ac, size: 20)),
+      ),
+    ]);
+  }
+
+  Widget _inRoom(RoomState s) {
+    final t = NoorTheme.of(context);
+    final room = s.room!;
+    final me = ref.read(roomProvider.notifier).uid;
+    final others = room.members.where((m) => m.uid != room.starUid).toList();
+    final waiting = s.isStar ? room.waiting : 0;
+
+    // Just created (or still alone): the code to share, on the left.
+    Widget left;
+    if (others.isEmpty) {
+      left = GestureDetector(
+        onTap: () {
+          Clipboard.setData(ClipboardData(text: room.code));
+          NoorToast.show(context, 'Room code copied');
+        },
+        child: Text(room.code,
+            key: const ValueKey('room-pill-code'),
+            semanticsLabel: 'Room code ${room.code.split('').join(' ')}',
+            style: TextStyle(
+                color: t.ac,
+                fontSize: 15,
+                letterSpacing: 3,
+                fontWeight: FontWeight.w800)),
+      );
+    } else {
+      left = _Faces(members: others, away: s.away, me: me);
+    }
+    final pill = _frame(
+      Row(children: [
+        left,
+        const Spacer(),
+        _starName(room, me),
+        if (_created && s.isStar)
+          _round(Icons.thumb_up_alt_rounded, 'Done',
+              () => setState(() => _created = false),
+              filled: true, key: const ValueKey('room-created-ok'))
+        else
+          const SizedBox(width: 10),
+      ]),
+      onTap: () => showRoomSheet(context),
+    );
+
+    return LayoutBuilder(builder: (context, box) {
+      final w = box.maxWidth;
+      return SizedBox(
+        height: RoomPill.height + 8,
+        child: Stack(clipBehavior: Clip.none, children: [
+          // Behind the pill: everyone, as circles to scroll through.
+          if (_reveal)
+            Positioned(
+              left: 0,
+              top: 4,
+              width: w * 0.9 - 8,
+              height: RoomPill.height,
+              // Swipe left: back to the pill (once the circles are
+              // scrolled to their end, or when they all fit).
+              child: NotificationListener<ScrollNotification>(
+                onNotification: (n) {
+                  final atEnd =
+                      n.metrics.pixels >= n.metrics.maxScrollExtent - 1;
+                  if ((n is OverscrollNotification &&
+                          n.overscroll > 0 &&
+                          n.dragDetails != null) ||
+                      (n is ScrollEndNotification &&
+                          atEnd &&
+                          (n.dragDetails?.primaryVelocity ?? 0) < -150)) {
+                    setState(() => _reveal = false);
+                  }
+                  return false;
+                },
+                child: GestureDetector(
+                  onHorizontalDragEnd: (d) {
+                    if ((d.primaryVelocity ?? 0) < -150) {
+                      setState(() => _reveal = false);
+                    }
+                  },
+                  child: _everyone(room, s, me),
+                ),
+              ),
+            ),
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 320),
+            curve: Curves.easeOutCubic,
+            left: _reveal ? w * 0.9 : 0,
+            width: w,
+            top: 4,
+            child: GestureDetector(
+              onHorizontalDragEnd: (d) {
+                final v = d.primaryVelocity ?? 0;
+                if (v > 150 && !_reveal) setState(() => _reveal = true);
+                if (v < -150 && _reveal) setState(() => _reveal = false);
+              },
+              onTap: _reveal ? () => setState(() => _reveal = false) : null,
+              child: AbsorbPointer(absorbing: _reveal, child: pill),
+            ),
+          ),
+          if (waiting > 0 && !_reveal)
             Positioned(
               left: -4,
-              top: -8,
-              child: Container(
-                key: const ValueKey('room-waiting'),
-                constraints: const BoxConstraints(minWidth: 22),
-                height: 22,
-                padding: const EdgeInsets.symmetric(horizontal: 6),
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: t.ac,
-                  borderRadius: BorderRadius.circular(11),
-                  border: Border.all(color: t.bg, width: 2),
+              top: -4,
+              child: GestureDetector(
+                onTap: () => showRoomRequests(context),
+                child: Container(
+                  key: const ValueKey('room-waiting'),
+                  constraints: const BoxConstraints(minWidth: 22),
+                  height: 22,
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: t.ac,
+                    borderRadius: BorderRadius.circular(11),
+                    border: Border.all(color: t.bg, width: 2),
+                  ),
+                  child: Text('$waiting',
+                      style: TextStyle(
+                          color: t.onAc,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800)),
                 ),
-                child: Text('$waiting',
-                    style: TextStyle(
-                        color: t.onAc,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800)),
               ),
             ),
         ]),
-      ),
+      );
+    });
+  }
+
+  /// Everyone in the room as circles (the star first); tap one for the
+  /// full name.
+  Widget _everyone(RoomSnapshot room, RoomState s, String me) {
+    final t = NoorTheme.of(context);
+    final all = [
+      ...room.members.where((m) => m.uid == room.starUid),
+      ...room.members.where((m) => m.uid != room.starUid),
+    ];
+    return ListView.separated(
+      key: const ValueKey('room-everyone'),
+      scrollDirection: Axis.horizontal,
+      itemCount: all.length,
+      separatorBuilder: (_, __) => const SizedBox(width: 8),
+      itemBuilder: (context, i) {
+        final m = all[i];
+        final open = _named == m.uid;
+        final name = m.uid == me ? 'You' : m.name;
+        return Center(
+          child: GestureDetector(
+            onTap: () => setState(() => _named = open ? null : m.uid),
+            onLongPress: s.isStar && m.uid != me
+                ? () => showMemberActions(context, ref, m)
+                : null,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+              height: 40,
+              padding: EdgeInsets.fromLTRB(2, 2, open ? 12 : 2, 2),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                    color: m.uid == room.starUid ? t.ac : t.faint, width: 1),
+              ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Opacity(
+                    opacity: s.away.contains(m.uid) ? 0.4 : 1,
+                    child: RoomAvatar(member: m, size: 34)),
+                if (open) ...[
+                  const SizedBox(width: 8),
+                  Text(
+                      '$name${m.uid == room.starUid ? ' ★' : ''}'
+                      '${s.away.contains(m.uid) ? ' · away' : ''}',
+                      style: TextStyle(
+                          color: t.ac,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600)),
+                ],
+              ]),
+            ),
+          ),
+        );
+      },
     );
   }
 }
 
-/// Up to three faces overlapping (the star first), then "+N".
+/// Up to five faces overlapping, then "+N".
 class _Faces extends StatelessWidget {
   const _Faces({required this.members, required this.away, required this.me});
   final List<RoomMember> members;
@@ -161,7 +494,7 @@ class _Faces extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = NoorTheme.of(context);
-    final shown = members.take(3).toList();
+    final shown = members.take(5).toList();
     final more = members.length - shown.length;
     final count = shown.length + (more > 0 ? 1 : 0);
     return SizedBox(
@@ -173,8 +506,7 @@ class _Faces extends StatelessWidget {
             left: step * i,
             child: Opacity(
               opacity: away.contains(shown[i].uid) ? 0.4 : 1,
-              child: RoomAvatar(
-                  member: shown[i], size: size, ring: t.bg, star: i == 0),
+              child: RoomAvatar(member: shown[i], size: size, ring: t.bg),
             ),
           ),
         if (more > 0)
