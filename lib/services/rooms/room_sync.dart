@@ -24,9 +24,11 @@ class ClockSync {
   void add(int before, int serverAt, int after) {
     final trip = after - before;
     if (trip < 0) return;
-    // Phone clocks drift slowly: after 5 minutes any new reading counts.
+    // Only a quicker reading replaces the one in use (a quicker round trip
+    // is a more exact one). Phone clocks drift slowly, so after 5 minutes
+    // a reading not much slower than the best also counts.
     final stale = after - _readAt > 5 * 60 * 1000;
-    if (rtt == null || trip <= rtt! + 20 || stale) {
+    if (rtt == null || trip < rtt! || (stale && trip <= rtt! * 3 ~/ 2 + 10)) {
       offset = serverAt - (before + after) ~/ 2;
       rtt = trip;
       _readAt = after;

@@ -46,6 +46,35 @@ class RoomNameNotifier extends StateNotifier<String> {
   }
 }
 
+/// This phone's timing in rooms, in ms (+: plays earlier than the star's
+/// place). Phones take different times to get sound out of the speaker
+/// (more with sound effects on or with earbuds), which the player can't
+/// see; a listener tunes it by ear once and it stays.
+final roomTuneProvider =
+    StateNotifierProvider<RoomTuneNotifier, int>((ref) => RoomTuneNotifier());
+
+class RoomTuneNotifier extends StateNotifier<int> {
+  RoomTuneNotifier() : super(0) {
+    SharedPreferences.getInstance().then((p) {
+      if (mounted) state = p.getInt(_k) ?? 0;
+    }).catchError((_) {});
+  }
+  static const _k = 'room_tune_ms';
+
+  /// The most either way.
+  static const limit = 600;
+
+  void nudge(int ms) => set(state + ms);
+
+  Future<void> set(int ms) async {
+    state = ms.clamp(-limit, limit);
+    nlog('[R] timing for this phone: ${state > 0 ? '+' : ''}${state}ms');
+    try {
+      (await SharedPreferences.getInstance()).setInt(_k, state);
+    } catch (_) {}
+  }
+}
+
 final roomProvider = StateNotifierProvider<RoomNotifier, RoomState>((ref) {
   final store = ref.watch(roomStoreProvider);
   final n = RoomNotifier(ref, store == null ? null : RoomController(store));
@@ -226,8 +255,10 @@ class RoomNotifier extends StateNotifier<RoomState> {
     final f = _follower;
     final c = controller;
     if (f == null || c == null) return;
+    // This phone's own timing (tuned by ear): aim that much earlier.
+    final tune = _ref.read(roomTuneProvider);
     f.tick(state.room?.play,
-        serverNow: c.serverNow(), nowMs: _nowMs, clockRtt: c.clockRtt);
+        serverNow: c.serverNow() + tune, nowMs: _nowMs, clockRtt: c.clockRtt);
   }
 
   // ── Actions (the room sheet) ──────────────────────────────────────────

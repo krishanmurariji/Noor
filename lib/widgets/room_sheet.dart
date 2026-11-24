@@ -15,19 +15,65 @@ import 'room_capsule.dart';
 
 /// The room panel over the player: start or join, the room itself, and
 /// (for the star) the requests.
+/// The room panel drops down from the top, under the pill it came from;
+/// swipe it up or tap outside to close.
 Future<void> showRoomSheet(BuildContext context, {bool requests = false}) {
-  final t = NoorTheme.of(context);
-  return showModalBottomSheet<void>(
+  return showGeneralDialog<void>(
     context: context,
-    backgroundColor: t.bg,
-    isScrollControlled: true,
-    constraints:
-        BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.86),
-    shape: RoundedRectangleBorder(
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-        side: BorderSide(color: t.ac, width: 0.8)),
-    builder: (_) => SafeArea(child: RoomPanel(startOnRequests: requests)),
+    barrierDismissible: true,
+    barrierLabel: 'Close the room',
+    barrierColor: Colors.black.withValues(alpha: 0.28),
+    transitionDuration: const Duration(milliseconds: 380),
+    pageBuilder: (context, _, __) => _TopPanel(requests: requests),
+    transitionBuilder: (context, anim, _, child) => SlideTransition(
+      position: Tween(begin: const Offset(0, -1), end: Offset.zero).animate(
+          CurvedAnimation(
+              parent: anim,
+              curve: Curves.easeOutCubic,
+              reverseCurve: Curves.easeInCubic)),
+      child: child,
+    ),
   );
+}
+
+class _TopPanel extends StatelessWidget {
+  const _TopPanel({required this.requests});
+  final bool requests;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = NoorTheme.of(context);
+    final mq = MediaQuery.of(context);
+    return Align(
+      alignment: Alignment.topCenter,
+      child: GestureDetector(
+        onVerticalDragEnd: (d) {
+          if ((d.primaryVelocity ?? 0) < -250) Navigator.of(context).maybePop();
+        },
+        child: Material(
+          color: t.bg,
+          shape: RoundedRectangleBorder(
+              borderRadius:
+                  const BorderRadius.vertical(bottom: Radius.circular(28)),
+              side: BorderSide(color: t.ac, width: 0.8)),
+          clipBehavior: Clip.antiAlias,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+                maxHeight: (mq.size.height - mq.viewInsets.bottom) * 0.9,
+                maxWidth: 600),
+            child: Padding(
+              padding: EdgeInsets.only(top: mq.padding.top + 4),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Flexible(child: RoomPanel(startOnRequests: requests)),
+                // The handle at the bottom: swipe up to close.
+                const _Grip(),
+              ]),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 const _share = MethodChannel('noor/share');
@@ -365,7 +411,7 @@ class _StartOrJoinState extends ConsumerState<_StartOrJoin> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const _Grip(),
+            const SizedBox(height: 8),
             _Heading('Listen together',
                 sub: n.available
                     ? 'You play, every phone in the room plays the same song.'
@@ -455,7 +501,7 @@ class _Knocking extends ConsumerWidget {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 22),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
-        const _Grip(),
+        const SizedBox(height: 8),
         _Heading('Asking to join',
             sub: '$name · the star will let you in (or not).'),
         const SizedBox(height: 20),
@@ -533,7 +579,7 @@ class _RoomHeaderState extends ConsumerState<_RoomHeader> {
     } else {
       name = Row(children: [
         Flexible(
-          child: Text(room.name,
+          child: Text(cleanRoomName(room.name),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: noorSongTitleStyle(t.ac, size: 24)),
@@ -652,7 +698,7 @@ class _Members extends ConsumerWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const _Grip(),
+                const SizedBox(height: 8),
                 _Heading(m.name),
                 const SizedBox(height: 16),
                 _Button('Make ${m.name} the star', icon: Icons.star_rounded,
@@ -730,7 +776,7 @@ class _StarView extends ConsumerWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const _Grip(),
+            const SizedBox(height: 8),
             _RoomHeader(room: room, canRename: true),
             const SizedBox(height: 14),
             _Members(room: room, manage: true),
@@ -849,10 +895,12 @@ class _ListenerView extends ConsumerWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const _Grip(),
+            const SizedBox(height: 8),
             _RoomHeader(room: room),
             const SizedBox(height: 14),
             _Members(room: room, manage: false),
+            const SizedBox(height: 12),
+            const _Timing(),
             const SizedBox(height: 10),
             _Button('Sync now',
                 key: const ValueKey('room-sync'),
@@ -1091,7 +1139,7 @@ class _RequestsState extends ConsumerState<_Requests> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const _Grip(),
+            const SizedBox(height: 8),
             Row(children: [
               IconButton(
                   tooltip: 'Back to the room',
@@ -1135,6 +1183,73 @@ class _RequestsState extends ConsumerState<_Requests> {
             else
               ...items,
           ]),
+    );
+  }
+}
+
+/// Hear an echo? This phone's timing, tuned by ear in 20 ms steps (phones
+/// take different times to get sound out of the speaker).
+class _Timing extends ConsumerWidget {
+  const _Timing();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = NoorTheme.of(context);
+    final tune = ref.watch(roomTuneProvider);
+    final n = ref.read(roomTuneProvider.notifier);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
+      decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: t.faint)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          Text('TIMING',
+              style: TextStyle(
+                  color: t.mute,
+                  fontSize: 11,
+                  letterSpacing: 2,
+                  fontWeight: FontWeight.w700)),
+          const SizedBox(width: 8),
+          Text(
+              tune == 0
+                  ? 'as measured'
+                  : '${tune.abs()} ms ${tune > 0 ? 'earlier' : 'later'}',
+              key: const ValueKey('room-tune-value'),
+              style: TextStyle(
+                  color: t.ac, fontSize: 12.5, fontWeight: FontWeight.w700)),
+          const Spacer(),
+          if (tune != 0)
+            TextButton(
+                onPressed: () => n.set(0),
+                child: Text('Reset',
+                    style: TextStyle(color: t.mute, fontSize: 12))),
+        ]),
+        Text(
+            'Hear an echo? If this phone sounds behind, tap Earlier; '
+            'ahead, tap Later. It stays set for this phone.',
+            style: TextStyle(color: t.mute, fontSize: 11.5, height: 1.35)),
+        const SizedBox(height: 8),
+        Row(children: [
+          Expanded(
+            child: _Button('Later',
+                key: const ValueKey('room-tune-later'),
+                filled: false,
+                height: 38,
+                icon: Icons.remove_rounded,
+                onTap: () => n.nudge(-20)),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: _Button('Earlier',
+                key: const ValueKey('room-tune-earlier'),
+                filled: false,
+                height: 38,
+                icon: Icons.add_rounded,
+                onTap: () => n.nudge(20)),
+          ),
+        ]),
+      ]),
     );
   }
 }

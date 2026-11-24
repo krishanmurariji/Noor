@@ -402,7 +402,7 @@ class RoomController {
     _beat = Timer.periodic(const Duration(seconds: 15), (_) => _heartbeat());
     unawaited(() async {
       // A few readings at the start: the quickest round trip wins.
-      for (var i = 0; i < 8 && _state.code == code; i++) {
+      for (var i = 0; i < 12 && _state.code == code; i++) {
         await _heartbeat();
       }
       nlog(

@@ -336,6 +336,20 @@ void main() {
     });
   });
 
+  test('timing: tuned by ear in steps, kept, never past the limit', () async {
+    SharedPreferences.setMockInitialValues({});
+    final tune = RoomTuneNotifier();
+    await Future<void>.delayed(Duration.zero);
+    tune.nudge(20);
+    tune.nudge(20);
+    expect(tune.state, 40);
+    await tune.set(5000);
+    expect(tune.state, RoomTuneNotifier.limit);
+    final again = RoomTuneNotifier();
+    await Future<void>.delayed(Duration.zero);
+    expect(again.state, RoomTuneNotifier.limit, reason: 'remembered');
+  });
+
   group('following the star', () {
     test('"Sync now" and "Sync everyone" jump straight to the star', () {
       final p = _FakePlayer();
