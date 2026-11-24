@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../theme/noor_palette.dart';
+export 'island_glyphs.dart' show IslandKind;
+import 'island_glyphs.dart';
 import '../theme/noor_search_button.dart';
 
 /// Noor's messages: a dark capsule that grows out of a dot in the header,
@@ -23,11 +25,12 @@ class NoorToast {
     String? action,
     VoidCallback? onAction,
     Duration? duration,
+    IslandKind? kind,
   }) {
     final overlay = Overlay.maybeOf(context, rootOverlay: true);
     if (overlay == null) return;
     showIn(overlay, message,
-        action: action, onAction: onAction, duration: duration);
+        action: action, onAction: onAction, duration: duration, kind: kind);
   }
 
   /// Same, for code without a page context (the app's own notices).
@@ -37,12 +40,14 @@ class NoorToast {
     String? action,
     VoidCallback? onAction,
     Duration? duration,
+    IslandKind? kind,
   }) {
     _entry?.remove();
     late final OverlayEntry entry;
     entry = OverlayEntry(
       builder: (_) => _Island(
         message: message,
+        kind: kind ?? islandKindFor(message),
         action: action,
         onAction: onAction,
         showFor: duration ??
@@ -65,6 +70,7 @@ class NoorToast {
 class _Island extends StatefulWidget {
   const _Island({
     required this.message,
+    required this.kind,
     required this.showFor,
     required this.onGone,
     this.action,
@@ -72,6 +78,9 @@ class _Island extends StatefulWidget {
   });
 
   final String message;
+
+  /// What it's about: picks the moving symbol and the light's colour.
+  final IslandKind kind;
   final String? action;
   final VoidCallback? onAction;
   final Duration showFor;
@@ -172,8 +181,8 @@ class _IslandState extends State<_Island> with TickerProviderStateMixin {
                         liveRegion: true,
                         label: widget.message,
                         child: CustomPaint(
-                          foregroundPainter:
-                              _RunningLight(_run.value, textIn, gold),
+                          foregroundPainter: _RunningLight(
+                              _run.value, textIn, widget.kind.color),
                           child: Container(
                             width: w.clamp(kNoorHeaderSize, box.maxWidth + 4),
                             height: kNoorHeaderSize,
@@ -192,7 +201,7 @@ class _IslandState extends State<_Island> with TickerProviderStateMixin {
                             child: Opacity(
                               opacity: textIn,
                               child: Row(children: [
-                                _Bars(t: _run.value, color: gold),
+                                IslandGlyph(kind: widget.kind, t: _run.value),
                                 const SizedBox(width: 10),
                                 Expanded(
                                   child: Text(widget.message,
@@ -236,34 +245,6 @@ class _IslandState extends State<_Island> with TickerProviderStateMixin {
             },
           );
         }),
-      ),
-    );
-  }
-}
-
-/// Three small bars bouncing like sound: the island is saying something.
-class _Bars extends StatelessWidget {
-  const _Bars({required this.t, required this.color});
-  final double t;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 16,
-      height: 16,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          for (var i = 0; i < 3; i++)
-            Container(
-              width: 3,
-              height: 5 + 11 * (0.5 + 0.5 * sin(2 * pi * (t * 2 + i * 0.27))),
-              decoration: BoxDecoration(
-                  color: color, borderRadius: BorderRadius.circular(2)),
-            ),
-        ],
       ),
     );
   }
