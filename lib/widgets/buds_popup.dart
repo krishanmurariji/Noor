@@ -150,13 +150,13 @@ class _BudsCardState extends State<BudsCard> with TickerProviderStateMixin {
     final card = !film
         ? (dark ? const Color(0xFF1F1914) : const Color(0xFFFBF8F4))
         : lightStage
-            ? const Color(0xFFB2B3B3) // the white case's light-grey stage
+            ? const Color(0xFF9C968C) // the white case's warm stone stage
             : const Color(0xFF0C0E0F); // the black case's dark stage
     final ink = lightStage || (!film && !dark)
-        ? const Color(0xFF26292B)
+        ? const Color(0xFF2A241F)
         : const Color(0xFFF2EEEA);
     final mute = lightStage
-        ? const Color(0xFF4E5355)
+        ? const Color(0xFF3E3832)
         : (film || dark ? const Color(0xFFA7A29C) : const Color(0xFF8A7B6C));
     const gold = Color(0xFFD8B06A);
     // The status light's colour in the clip: green, or red.
@@ -209,6 +209,20 @@ class _BudsCardState extends State<BudsCard> with TickerProviderStateMixin {
                         height: 330,
                         decoration: BoxDecoration(
                           color: card.withOpacity(0.96),
+                          // The stone stage is lit from above: darker at the
+                          // top, paler at the floor, as in the film.
+                          gradient: lightStage
+                              ? const LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [
+                                    Color(0xFF8C857B),
+                                    Color(0xFF9A948A),
+                                    Color(0xFFB3AFA6),
+                                  ],
+                                  stops: [0, 0.55, 1],
+                                )
+                              : null,
                           borderRadius: BorderRadius.circular(40),
                           border: Border.all(
                               color: gold.withOpacity(0.25), width: 0.8),
