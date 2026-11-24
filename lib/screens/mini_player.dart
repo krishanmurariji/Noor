@@ -98,16 +98,14 @@ class _MiniPlayerState extends ConsumerState<MiniPlayer>
   Song _neighbour(Song current, int step) => neighbourOf(current, step,
       playlists: ref.read(playlistProvider),
       liked: ref.read(likedSongsProvider),
-      history: ref.read(historyProvider));
+      history: ref.read(historyProvider),
+      onDevice: ref.read(myMusicProvider));
 
   void _openPlayer() => widget.onOpen != null
       ? widget.onOpen!()
       : Navigator.push(context, PlayerRoute()); // pops out of the bottom card
 
-  List<Song> _context(Song s) => contextListFor(s,
-      playlists: ref.read(playlistProvider),
-      liked: ref.read(likedSongsProvider),
-      history: ref.read(historyProvider));
+  List<Song> _context(Song s) => ref.read(playQueueProvider)(s);
 
   void _start(Song s) =>
       ref.read(playerProvider.notifier).playSong(s, queue: _context(s));

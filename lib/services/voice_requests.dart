@@ -147,9 +147,7 @@ class VoiceRequestResolver {
     for (final s in library) {
       final hay = '${s.title} ${s.artist}'.toLowerCase();
       if (words.isNotEmpty && words.every(hay.contains)) {
-        return VoiceRequest(
-            [s, ...history.where((h) => h.videoId != s.videoId)],
-            label: s.title, shuffle: c.shuffle);
+        return _ownList(s, playlists, liked, history, c.shuffle);
       }
     }
 
@@ -157,13 +155,33 @@ class VoiceRequestResolver {
     try {
       final found = await searchYoutube(q);
       if (found.isEmpty) return null;
-      final s = found.first;
-      return VoiceRequest([s, ...history.where((h) => h.videoId != s.videoId)],
-          label: s.title, shuffle: c.shuffle);
+      return _ownList(found.first, playlists, liked, history, c.shuffle);
     } catch (e) {
       nlog('[N] voice: search for "$q" failed: $e');
       return null;
     }
+  }
+
+  /// [s] in its own list, by the app's rule: its playlist, else My
+  /// Favorites, else My History (where it goes first if it is new).
+  static VoiceRequest _ownList(
+    Song s,
+    List<({String name, List<Song> songs})> playlists,
+    List<Song> liked,
+    List<Song> history,
+    bool shuffle,
+  ) {
+    bool has(List<Song> l) => l.any((x) => x.videoId == s.videoId);
+    final list = [
+      for (final p in playlists)
+        if (has(p.songs)) p.songs,
+      if (has(liked)) liked,
+      if (has(history)) history,
+      [s, ...history],
+    ].first;
+    final start = list.indexWhere((x) => x.videoId == s.videoId);
+    return VoiceRequest(list,
+        start: start < 0 ? 0 : start, label: s.title, shuffle: shuffle);
   }
 
   static List<Song> _songs(SharedPreferences p, String key) {

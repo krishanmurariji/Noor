@@ -175,10 +175,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   // ── Song changes ──────────────────────────────────────────────────────────
 
-  List<Song> _contextOf(Song s) => contextListFor(s,
-      playlists: ref.read(playlistProvider),
-      liked: ref.read(likedSongsProvider),
-      history: ref.read(historyProvider));
+  List<Song> _contextOf(Song s) => ref.read(playQueueProvider)(s);
 
   Song _target(Song current, int step) {
     if (_shuffle && step > 0) {
@@ -190,7 +187,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     return neighbourOf(current, step,
         playlists: ref.read(playlistProvider),
         liked: ref.read(likedSongsProvider),
-        history: ref.read(historyProvider));
+        history: ref.read(historyProvider),
+        onDevice: ref.read(myMusicProvider));
   }
 
   /// The song a swipe (or button) in this direction would play; the same

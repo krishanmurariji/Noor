@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/song.dart';
 import '../providers/library_provider.dart';
+import '../providers/queue_rules.dart';
 import '../providers/player_provider.dart';
 import '../providers/search_provider.dart';
 import '../theme/noor_palette.dart';
@@ -161,12 +162,11 @@ class _Results extends ConsumerWidget {
 
     void play(Song s) {
       HapticFeedback.lightImpact();
-      // "Up next" is what you played recently, not the search results.
-      final recent = ref
-          .read(historyProvider)
-          .where((h) => h.videoId != s.videoId)
-          .toList();
-      ref.read(playerProvider.notifier).playSong(s, queue: [s, ...recent]);
+      // It plays on through its own list (its playlist, My Favorites, or
+      // My History), not through the search results.
+      ref
+          .read(playerProvider.notifier)
+          .playSong(s, queue: ref.read(playQueueProvider)(s));
     }
 
     return ListView.builder(
@@ -416,7 +416,9 @@ class _OfflineResults extends ConsumerWidget {
           if (ps.song?.videoId == s.videoId) {
             ref.read(playerProvider.notifier).togglePlay();
           } else {
-            ref.read(playerProvider.notifier).playSong(s, queue: matches);
+            ref
+                .read(playerProvider.notifier)
+                .playSong(s, queue: ref.read(playQueueProvider)(s));
           }
         }
 

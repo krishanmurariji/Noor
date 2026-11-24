@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/song.dart';
 import '../providers/player_provider.dart';
 import '../providers/library_provider.dart';
+import '../providers/queue_rules.dart';
 import '../providers/last_played_provider.dart';
 import '../providers/local_music_provider.dart';
 import '../providers/home_order_provider.dart';
@@ -728,7 +729,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     if (ps.song?.videoId == song.videoId) {
       ref.read(playerProvider.notifier).togglePlay();
     } else {
-      ref.read(playerProvider.notifier).playSong(song, queue: queue);
+      // It plays on through its own list (its playlist, else My Favorites,
+      // else My History), whichever card it was tapped in.
+      ref
+          .read(playerProvider.notifier)
+          .playSong(song, queue: ref.read(playQueueProvider)(song));
     }
   }
 
