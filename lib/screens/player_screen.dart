@@ -12,6 +12,8 @@ import '../services/audio_handler.dart';
 import '../services/equalizer_settings.dart';
 import '../services/phone_volume.dart';
 import '../widgets/equalizer_sheet.dart';
+import '../widgets/room_capsule.dart';
+import '../providers/room_provider.dart';
 import '../widgets/song_info_sheet.dart';
 import '../theme/noor_palette.dart';
 import '../theme/noor_play_pause.dart';
@@ -235,9 +237,16 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     if (mounted) setState(() {});
   }
 
+  /// Listening in a room: the star picks the songs.
+  bool get _following => ref.read(roomProvider).isListener;
+
   /// Buttons: the same motion as a full swipe.
   Future<void> _change(int step) async {
     if (_swapping || _dragging) return;
+    if (_following) {
+      ref.read(playerProvider.notifier).skipNext(); // says who picks
+      return;
+    }
     if (ref.read(playerProvider).displaySong == null) return;
     _peek.clear();
     HapticFeedback.selectionClick();
@@ -388,7 +397,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     final ps = ref.watch(playerProvider);
     final song = ps.displaySong;
     // "Swipe the record" can be switched off in Settings → Gestures.
-    final swipeOn = ref.watch(gestureOnProvider(NoorGesture.playerRecordSwipe));
+    final swipeOn =
+        ref.watch(gestureOnProvider(NoorGesture.playerRecordSwipe)) &&
+            !ref.watch(roomProvider.select((r) => r.isListener));
     final t = NoorTheme.of(context);
     final liked = song != null && ref.watch(isLikedProvider(song.videoId));
     final volume = ref.watch(phoneVolumeProvider);
@@ -444,7 +455,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                       height: 44,
                       child: Row(children: [
                         const NoorLogo(),
-                        const Spacer(),
+                        // The room lives here: listen together.
+                        const Expanded(child: Center(child: RoomCapsule())),
                         NoorSearchButton(open: false, onTap: _goSearch),
                         const SizedBox(width: 8),
                         // Just the sound settings, in a panel over the

@@ -1,0 +1,420 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:noor/models/song.dart';
+import 'package:noor/providers/player_provider.dart';
+import 'package:noor/providers/room_provider.dart';
+import 'package:noor/services/rooms/room.dart';
+import 'package:noor/services/rooms/room_store.dart';
+import 'package:noor/theme/noor_palette.dart';
+import 'package:noor/widgets/room_capsule.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+const _song = Song(
+    videoId: 'abcdefghijk',
+    title: 'Monsoon Letters',
+    artist: 'Aanya Rao',
+    thumbnailUrl: '');
+const _other = Song(
+    videoId: 'zyxwvutsrqp',
+    title: 'Velvet Night',
+    artist: 'Zaid',
+    thumbnailUrl: '');
+
+class _P extends StateNotifier<NebulaPlayerState> implements PlayerNotifier {
+  _P() : super(const NebulaPlayerState(song: _song));
+  @override
+  dynamic noSuchMethod(Invocation i) => null;
+}
+
+Future<void> _settle() async {
+  for (var i = 0; i < 6; i++) {
+    await Future<void>.delayed(Duration.zero);
+  }
+}
+
+void main() {
+  group('codes', () {
+    test('new codes are six unmistakable characters', () {
+      for (var i = 0; i < 50; i++) {
+        final c = newRoomCode();
+        expect(c, hasLength(6));
+        expect(cleanRoomCode(c), c);
+        expect(c, isNot(matches(RegExp('[01OIL]'))));
+      }
+    });
+
+    test('typed codes are tidied, wrong ones refused', () {
+      expect(cleanRoomCode(' k7qm 2x'), 'K7QM2X');
+      expect(cleanRoomCode('K7-QM-2X'), 'K7QM2X');
+      expect(cleanRoomCode('K7QM2'), isNull);
+      expect(cleanRoomCode('K7QM2O'), isNull); // O looks like 0
+    });
+  });
+
+  group('JsonTree (the live stream copy)', () {
+    test('put and patch at paths, nulls remove', () {
+      final t = JsonTree();
+      t.put('/', {
+        'a': 1,
+        'b': {'c': 2}
+      });
+      t.put('/b/d', 3);
+      expect(t.value, {
+        'a': 1,
+        'b': {'c': 2, 'd': 3}
+      });
+      t.patch('/b', {'c': null, 'e': 5});
+      expect(t.at('b'), {'d': 3, 'e': 5});
+      t.put('/a', null);
+      expect(t.at('a'), isNull);
+      t.put('/', null);
+      expect(t.value, isNull);
+    });
+
+    test('lists become maps by index, like Firebase sends them', () {
+      final t = JsonTree();
+      t.put('/q', [
+        {'x': 1},
+        {'x': 2}
+      ]);
+      t.put('/q/1/x', 9);
+      expect(t.at('q/1/x'), 9);
+      expect(t.at('q/0/x'), 1);
+    });
+  });
+
+  group('a room between phones', () {
+    late MemoryRoomDb db;
+    late RoomController aanya, rohan, zaid;
+    final events = <String, List<String>>{};
+
+    setUp(() {
+      db = MemoryRoomDb();
+      aanya = RoomController(MemoryRoomStore(db, 'uid-aanya'));
+      rohan = RoomController(MemoryRoomStore(db, 'uid-rohan'));
+      zaid = RoomController(MemoryRoomStore(db, 'uid-zaid'));
+      events.clear();
+      for (final (name, c) in [('a', aanya), ('r', rohan), ('z', zaid)]) {
+        events[name] = [];
+        c.events.listen((e) => events[name]!.add(e.text));
+      }
+    });
+
+    tearDown(() {
+      aanya.dispose();
+      rohan.dispose();
+      zaid.dispose();
+    });
+
+    Future<String> startAndLetIn() async {
+      final code = await aanya.start('Aanya');
+      await _settle();
+      expect(await rohan.knock(code, 'Rohan'), isNull);
+      await _settle();
+      expect(rohan.state.role, RoomRole.knocking);
+      expect(aanya.state.room!.knocks.single.name, 'Rohan');
+      expect(events['a'], contains('Rohan wants to join'));
+      await aanya.letIn(aanya.state.room!.knocks.single);
+      await _settle();
+      return code;
+    }
+
+    test('start, ask to join, let in', () async {
+      final code = await startAndLetIn();
+      expect(aanya.state.isStar, isTrue);
+      expect(rohan.state.isListener, isTrue);
+      expect(rohan.state.code, code);
+      expect(rohan.state.room!.starName, 'Aanya');
+      expect(aanya.state.room!.members.map((m) => m.name), ['Aanya', 'Rohan']);
+      expect(aanya.state.room!.knocks, isEmpty);
+      expect(events['r']!.single, startsWith("You're in"));
+    });
+
+    test('a wrong code says so', () async {
+      expect(await rohan.knock('ZZZZZZ', 'Rohan'), 'No room with that code');
+      expect(rohan.state.role, RoomRole.none);
+    });
+
+    test('not now, and block keeps them out', () async {
+      final code = await aanya.start('Aanya');
+      await _settle();
+      await zaid.knock(code, 'Zaid');
+      await _settle();
+      await aanya.notNow(aanya.state.room!.knocks.single);
+      await _settle();
+      expect(zaid.state.role, RoomRole.none);
+      expect(events['z']!.last, contains('said no'));
+
+      await zaid.knock(code, 'Zaid');
+      await _settle();
+      await aanya.block('uid-zaid', 'Zaid');
+      await _settle();
+      expect(zaid.state.role, RoomRole.none);
+      expect(events['z']!.last, "You can't join this room");
+      expect(aanya.state.room!.blocked, contains('uid-zaid'));
+    });
+
+    test('a member removed is told so', () async {
+      await startAndLetIn();
+      await aanya.block('uid-rohan', 'Rohan');
+      await _settle();
+      expect(rohan.state.role, RoomRole.none);
+      expect(events['r']!.last, 'You were removed from the room');
+    });
+
+    test('song requests: ask, accept, the asker hears back', () async {
+      await startAndLetIn();
+      await rohan.askForSong(_other);
+      await _settle();
+      final ask = aanya.state.room!.asks.single;
+      expect(ask.song!.title, 'Velvet Night');
+      expect(ask.name, 'Rohan');
+      expect(events['a'], contains('Rohan asked for Velvet Night'));
+      await aanya.acceptSong(ask, next: true);
+      await _settle();
+      expect(aanya.state.room!.asks, isEmpty);
+      expect(events['r'], contains('Velvet Night plays next'));
+    });
+
+    test('phone songs are never asked for', () async {
+      await startAndLetIn();
+      await rohan.askForSong(const Song(
+          videoId: 'local-12345',
+          title: 'Voice memo',
+          artist: '',
+          thumbnailUrl: '',
+          localUri: 'content://media/external/audio/media/5'));
+      await _settle();
+      expect(aanya.state.room!.asks, isEmpty);
+    });
+
+    test('asking to be the star and handing over', () async {
+      await startAndLetIn();
+      await rohan.askToBeStar();
+      await _settle();
+      expect(rohan.askedToBeStar, isTrue);
+      final m = aanya.state.room!.members.firstWhere((m) => m.name == 'Rohan');
+      await aanya.handOver(m);
+      await _settle();
+      expect(rohan.state.isStar, isTrue);
+      expect(aanya.state.isListener, isTrue);
+      expect(rohan.state.room!.asks, isEmpty);
+      expect(events['r'], contains("You're the star now"));
+      expect(events['a'], contains('Rohan is the star now'));
+    });
+
+    test('the star leaving hands the room on; the last one out ends it',
+        () async {
+      final code = await startAndLetIn();
+      await aanya.leave();
+      await _settle();
+      expect(aanya.state.role, RoomRole.none);
+      expect(rohan.state.isStar, isTrue);
+      expect(rohan.state.room!.members.single.name, 'Rohan');
+      await rohan.leave();
+      await _settle();
+      expect(await rohan.store.read('rooms/$code'), isNull);
+    });
+
+    test('the room ending tells the listeners', () async {
+      final code = await startAndLetIn();
+      await aanya.store.remove('rooms/$code');
+      await _settle();
+      expect(rohan.state.role, RoomRole.none);
+      expect(events['r']!.last, 'The room has ended');
+    });
+
+    test('a full room lets nobody else in', () async {
+      final code = await aanya.start('Aanya');
+      await _settle();
+      for (var i = 1; i < kRoomCap; i++) {
+        await aanya.store.write(
+            'rooms/$code/members/m$i', {'name': 'M$i', 'at': i, 'seen': i});
+      }
+      await rohan.knock(code, 'Rohan');
+      await _settle();
+      expect(await aanya.letIn(aanya.state.room!.knocks.single), isFalse);
+    });
+
+    test('playback and the queue go up to the room', () async {
+      await startAndLetIn();
+      await aanya.publishPlay(_song, const Duration(seconds: 40), true);
+      await aanya.publishQueue([_other]);
+      await _settle();
+      final play = rohan.state.room!.play!;
+      expect(play.song!.title, 'Monsoon Letters');
+      expect(play.playing, isTrue);
+      expect(play.positionAt(play.at + 5000), const Duration(seconds: 45));
+      expect(rohan.state.room!.queue.single.title, 'Velvet Night');
+      // Listeners can't publish.
+      await rohan.publishPlay(_other, Duration.zero, false);
+      await _settle();
+      expect(aanya.state.room!.play!.song!.title, 'Monsoon Letters');
+    });
+  });
+
+  group('following the star', () {
+    RoomPlay play({bool playing = true, int pos = 30000, Song? song}) =>
+        RoomPlay(song ?? _song, pos, playing, 1000);
+
+    test('another song: load it at the star\'s place', () {
+      final s = followStep(
+          play: play(),
+          serverNow: 6000,
+          mine: _other,
+          myPosition: Duration.zero,
+          myPlaying: true,
+          myLoading: false,
+          last: null);
+      expect(s.kind, FollowKind.load);
+      expect(s.song, _song);
+      expect(s.at, const Duration(seconds: 35));
+    });
+
+    test('drifted: seek; close enough: nothing', () {
+      final far = followStep(
+          play: play(),
+          serverNow: 6000,
+          mine: _song,
+          myPosition: const Duration(seconds: 30),
+          myPlaying: true,
+          myLoading: false,
+          last: (id: _song.videoId, playing: true));
+      expect(far.kind, FollowKind.seek);
+      final near = followStep(
+          play: play(),
+          serverNow: 6000,
+          mine: _song,
+          myPosition: const Duration(milliseconds: 34200),
+          myPlaying: true,
+          myLoading: false,
+          last: (id: _song.videoId, playing: true));
+      expect(near.kind, FollowKind.none);
+    });
+
+    test('the star pauses or plays: so does this phone', () {
+      expect(
+          followStep(
+              play: play(playing: false),
+              serverNow: 6000,
+              mine: _song,
+              myPosition: const Duration(seconds: 30),
+              myPlaying: true,
+              myLoading: false,
+              last: (id: _song.videoId, playing: true)).kind,
+          FollowKind.pause);
+      expect(
+          followStep(
+              play: play(),
+              serverNow: 6000,
+              mine: _song,
+              myPosition: const Duration(seconds: 30),
+              myPlaying: false,
+              myLoading: false,
+              last: (id: _song.videoId, playing: false)).kind,
+          FollowKind.play);
+    });
+
+    test('a listener\'s own pause holds until the star changes something', () {
+      final s = followStep(
+          play: play(),
+          serverNow: 6000,
+          mine: _song,
+          myPosition: const Duration(seconds: 10),
+          myPlaying: false,
+          myLoading: false,
+          last: (id: _song.videoId, playing: true));
+      expect(s.kind, FollowKind.none);
+    });
+
+    test('a song from the star\'s phone: pause, nothing to load', () {
+      final s = followStep(
+          play: const RoomPlay(null, 0, true, 1000, fromPhone: true),
+          serverNow: 2000,
+          mine: _song,
+          myPosition: Duration.zero,
+          myPlaying: true,
+          myLoading: false,
+          last: null);
+      expect(s.kind, FollowKind.pause);
+    });
+
+    test('while loading the star\'s song, wait', () {
+      final s = followStep(
+          play: play(),
+          serverNow: 6000,
+          mine: _song,
+          myPosition: Duration.zero,
+          myPlaying: false,
+          myLoading: true,
+          last: (id: _song.videoId, playing: true));
+      expect(s.kind, FollowKind.none);
+    });
+  });
+
+  group('the room panel', () {
+    Widget app(MemoryRoomDb db, {String uid = 'uid-aanya'}) => ProviderScope(
+          overrides: [
+            roomStoreProvider.overrideWithValue(MemoryRoomStore(db, uid)),
+            playerProvider.overrideWith((ref) => _P()),
+          ],
+          child: MaterialApp(
+            theme: ThemeData(brightness: Brightness.light),
+            home: Builder(
+              builder: (context) => Scaffold(
+                backgroundColor: NoorTheme.light.bg,
+                body: const Center(child: RoomCapsule()),
+              ),
+            ),
+          ),
+        );
+
+    testWidgets('the capsule opens "Listen together"; a name is asked once',
+        (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      await tester.pumpWidget(app(MemoryRoomDb()));
+      expect(find.bySemanticsLabel('Listen together'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('room-capsule')));
+      await tester.pumpAndSettle();
+      expect(find.text('Listen together'), findsOneWidget);
+      expect(find.byKey(const ValueKey('room-name')), findsOneWidget);
+      // Join is off until a whole code is typed.
+      await tester.enterText(find.byKey(const ValueKey('room-code')), 'k7q');
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('room-join')));
+      await tester.pump();
+      expect(find.text('Add your name first'), findsNothing);
+    });
+
+    testWidgets('starting a room shows its code and the capsule grows',
+        (tester) async {
+      SharedPreferences.setMockInitialValues({'room_my_name': 'Aanya'});
+      final db = MemoryRoomDb();
+      await tester.pumpWidget(app(db));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('room-capsule')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('room-name')), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('room-start')));
+      // The saved name loads in the test's clock, the room in real time.
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+        await tester.runAsync(_settle);
+      }
+      await tester.pump(const Duration(milliseconds: 400));
+      final code = (db.tree.value as Map)['rooms'].keys.single as String;
+      expect(find.text(code), findsOneWidget);
+      expect(find.text("Aanya's room"), findsOneWidget);
+      expect(find.text('End the room'), findsOneWidget);
+      expect(find.text('1 in the room'), findsOneWidget);
+      // Leave the timers behind cleanly.
+      await tester.runAsync(() async {
+        await tester.tap(find.byKey(const ValueKey('room-leave')));
+        await _settle();
+      });
+      await tester.pumpAndSettle();
+      expect(db.tree.value, isNull);
+    });
+  });
+}

@@ -95,6 +95,11 @@ jobs:
           echo "number=${{ github.run_number }}" >> "$GITHUB_OUTPUT"
 
       - name: Build release APK
+        env:
+          # Rooms (listen together). Empty until the Firebase project is set
+          # up: the app then says Rooms aren't set up. See docs/rooms-setup.md.
+          NOOR_FIREBASE_DB_URL: ${{ secrets.NOOR_FIREBASE_DB_URL }}
+          NOOR_FIREBASE_API_KEY: ${{ secrets.NOOR_FIREBASE_API_KEY }}
         run: |
           # The app shows these in Settings → About (version, build, commit).
           flutter build apk --release \
@@ -102,7 +107,9 @@ jobs:
             --build-number="${{ steps.ver.outputs.number }}" \
             --dart-define=NOOR_VERSION="${{ steps.ver.outputs.name }}" \
             --dart-define=NOOR_BUILD="${{ steps.ver.outputs.number }}" \
-            --dart-define=NOOR_COMMIT="${GITHUB_SHA::7}"
+            --dart-define=NOOR_COMMIT="${GITHUB_SHA::7}" \
+            --dart-define=NOOR_FIREBASE_DB_URL="${NOOR_FIREBASE_DB_URL}" \
+            --dart-define=NOOR_FIREBASE_API_KEY="${NOOR_FIREBASE_API_KEY}"
           cp build/app/outputs/flutter-apk/app-release.apk noor.apk
           sha256sum noor.apk | tee noor.apk.sha256
           ls -lh noor.apk

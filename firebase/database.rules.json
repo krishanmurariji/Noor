@@ -1,0 +1,37 @@
+{
+  "rules": {
+    "rooms": {
+      "$code": {
+        ".read": "auth != null && data.child('members').child(auth.uid).exists()",
+        ".write": "auth != null && ((!data.exists() && newData.child('info/star').val() === auth.uid) || data.child('info/star').val() === auth.uid)",
+        "info": {
+          ".read": "auth != null"
+        },
+        "knocks": {
+          "$uid": {
+            ".read": "auth != null && auth.uid === $uid",
+            ".write": "auth != null && auth.uid === $uid && data.parent().parent().child('info').exists() && !data.parent().parent().child('blocked').child($uid).exists() && !newData.child('answer').exists()",
+            "name": { ".validate": "newData.isString() && newData.val().length <= 24" }
+          }
+        },
+        "members": {
+          "$uid": {
+            ".read": "auth != null && auth.uid === $uid",
+            ".write": "auth != null && auth.uid === $uid && data.exists() && (!newData.exists() || newData.child('name').val() === data.child('name').val())",
+            "name": { ".validate": "newData.isString() && newData.val().length <= 24" }
+          }
+        },
+        "asks": {
+          "$id": {
+            ".write": "auth != null && !data.exists() && newData.child('uid').val() === auth.uid && data.parent().parent().child('members').child(auth.uid).exists()"
+          }
+        },
+        "blocked": {
+          "$uid": {
+            ".read": "auth != null && auth.uid === $uid"
+          }
+        }
+      }
+    }
+  }
+}

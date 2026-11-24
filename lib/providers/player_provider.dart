@@ -164,7 +164,29 @@ class PlayerNotifier extends StateNotifier<NebulaPlayerState> {
 
   // ── Public actions ────────────────────────────────────────────────────────
 
+  // ── Following a room's star ───────────────────────────────────────────
+  // While this phone listens in a room, the star picks the songs: a song
+  // tapped here becomes an offer to ask for it, and skipping or seeking
+  // says who decides. Play / pause stay this phone's own.
+
+  /// The star's name while following a room (null otherwise).
+  String? Function()? followingStar;
+
+  /// A song tapped while following.
+  void Function(Song song)? onSongWhileFollowing;
+
+  bool _followed(String what) {
+    final star = followingStar?.call();
+    if (star == null) return false;
+    _showNotice('$star $what');
+    return true;
+  }
+
   Future<void> playSong(Song song, {List<Song>? queue}) async {
+    if (followingStar?.call() != null) {
+      if (song != state.displaySong) onSongWhileFollowing?.call(song);
+      return;
+    }
     final q = queue ?? [song];
     final idx = q.indexOf(song);
 
@@ -238,9 +260,19 @@ class PlayerNotifier extends StateNotifier<NebulaPlayerState> {
         .setVolume(volume.isNaN ? 1.0 : volume.clamp(0.0, 1.0));
   }
 
-  Future<void> skipNext() async => _handler.skipToNext();
-  Future<void> skipPrevious() async => _handler.skipToPrevious();
-  Future<void> seek(Duration d) async => _handler.seek(d);
+  Future<void> skipNext() async {
+    if (!_followed('picks the songs in this room')) await _handler.skipToNext();
+  }
+
+  Future<void> skipPrevious() async {
+    if (!_followed('picks the songs in this room')) {
+      await _handler.skipToPrevious();
+    }
+  }
+
+  Future<void> seek(Duration d) async {
+    if (!_followed('decides where the song is')) await _handler.seek(d);
+  }
 
   @override
   void dispose() {

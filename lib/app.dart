@@ -2,6 +2,9 @@ import 'dart:math' as math;
 import 'widgets/noor_toast.dart';
 import 'widgets/offline_pill.dart';
 import 'widgets/buds_popup.dart';
+import 'widgets/room_sheet.dart';
+import 'providers/room_provider.dart';
+import 'services/rooms/room.dart';
 import 'services/audio_devices.dart';
 import 'services/updater.dart';
 import 'services/app_log.dart';
@@ -102,6 +105,8 @@ class NebulaApp extends ConsumerWidget {
     // not count (it would bounce between the last two songs).
     ref.listen<String>(_queueContextKeyProvider, (prev, next) {
       if (prev == null || prev == next) return;
+      // In a room the listeners' queue is the star's.
+      if (ref.read(roomProvider).isListener) return;
       // Only a change for the same song (a new song brought its queue).
       if (prev.split('|').first != next.split('|').first) return;
       final song = ref.read(playerProvider).song;
@@ -115,6 +120,25 @@ class NebulaApp extends ConsumerWidget {
       if (n == null) return;
       final overlay = _navigatorKey.currentState?.overlay;
       if (overlay != null) NoorToast.showIn(overlay, n);
+    });
+    // Rooms: who wants in, requests, "you're the star now"… in the capsule.
+    ref.listen<AsyncValue<RoomEvent>>(roomEventsProvider, (_, next) {
+      final e = next.valueOrNull;
+      final overlay = _navigatorKey.currentState?.overlay;
+      if (e == null || overlay == null) return;
+      final rooms = ref.read(roomProvider.notifier);
+      final ask = e.text.startsWith('Ask ') ? rooms.takePendingAsk() : null;
+      if (ask != null) {
+        NoorToast.showIn(overlay, e.text,
+            action: 'Ask', onAction: () => rooms.askForSong(ask));
+      } else if (e.openRoom) {
+        NoorToast.showIn(overlay, e.text, action: 'See', onAction: () {
+          final ctx = _navigatorKey.currentContext;
+          if (ctx != null) showRoomSheet(ctx);
+        });
+      } else {
+        NoorToast.showIn(overlay, e.text);
+      }
     });
     // Earbuds connected / disconnected while Noor is on screen: the card.
     ref.listen<AsyncValue<AudioDeviceEvent>>(audioDeviceChangesProvider,

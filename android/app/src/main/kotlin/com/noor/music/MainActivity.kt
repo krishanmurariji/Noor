@@ -130,6 +130,21 @@ class MainActivity : AudioServiceActivity() {
                 }
             }
         }
+        // Rooms: the invite goes out through Android's share sheet.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "noor/share")
+            .setMethodCallHandler { call, result ->
+                if (call.method != "text") return@setMethodCallHandler result.notImplemented()
+                try {
+                    val send = Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(Intent.EXTRA_TEXT, call.argument<String>("text") ?: "")
+                    }
+                    startActivity(Intent.createChooser(send, call.argument<String>("title")))
+                    result.success(true)
+                } catch (e: Exception) {
+                    result.success(false)
+                }
+            }
         val app = applicationContext
         // Network, for the "Auto" song quality: Wi-Fi (not metered) and
         // Android's Data Saver.

@@ -1073,6 +1073,22 @@ class NebulaAudioHandler extends BaseAudioHandler with SeekHandler {
     _publishQueue();
   }
 
+  /// Plays [song] after the current one (a room request accepted).
+  void insertNext(Song song) {
+    _queue.remove(song);
+    final current = _current;
+    if (current != null) _idx = max(0, _queue.indexOf(current));
+    _queue.insert(_queue.isEmpty ? 0 : _idx + 1, song);
+    _publishQueue();
+  }
+
+  /// Adds [song] at the end of what plays.
+  void append(Song song) {
+    if (_queue.contains(song)) return;
+    _queue.add(song);
+    _publishQueue();
+  }
+
   void reorderQueue(int oldIndex, int newIndex) {
     if (oldIndex < 0 || oldIndex >= _queue.length) return;
     final current = _current;
