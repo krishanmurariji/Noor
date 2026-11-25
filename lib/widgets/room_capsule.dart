@@ -41,7 +41,6 @@ class RoomPill extends ConsumerStatefulWidget {
 class _RoomPillState extends ConsumerState<RoomPill> {
   bool _open = false; // no room: the code field is showing
   bool _reveal = false; // in a room: swiped right, everyone's circles show
-  bool _created = false; // just created: the code shows with a thumbs-up
   String? _named; // the circle showing its full name
   bool _busy = false;
   String? _error;
@@ -73,18 +72,30 @@ class _RoomPillState extends ConsumerState<RoomPill> {
   Widget build(BuildContext context) {
     final s = ref.watch(roomProvider);
     // Leaving the room (or never having one) puts the pill back to rest.
-    if (!s.inRoom && _reveal) _reveal = false;
-    if (!s.inRoom && s.role != RoomRole.knocking && _created) _created = false;
-    if (s.inRoom && _open) _open = false;
+    final alone = s.room != null && s.room!.members.length <= 1;
+    if ((!s.inRoom || alone) && _reveal) _reveal = false;
+    if (s.role == RoomRole.knocking || (s.inRoom && !alone)) _open = false;
+    final available = ref.read(roomProvider.notifier).available;
     final Widget child;
-    if (s.inRoom && s.room != null) {
-      child = _inRoom(s);
-    } else if (s.role == RoomRole.knocking) {
+    if (s.role == RoomRole.knocking) {
       child = _frame(_knocking(s));
     } else if (_open) {
       child = _frame(_join());
+    } else if (s.inRoom && s.room != null && !alone) {
+      child = _inRoom(s);
+    } else if (!available) {
+      child = _frame(_rest(),
+          onTap: () => NoorToast.show(
+              context, 'Rooms are not set up in this build of Noor yet'));
     } else {
-      child = _frame(_rest(), onTap: () => setState(() => _open = true));
+      // This phone's own room: its code, and Join to go to someone's.
+      final waiting = s.isStar ? (s.room?.waiting ?? 0) : 0;
+      child = Stack(clipBehavior: Clip.none, children: [
+        _frame(_home(s), onTap: () {
+          if (s.inRoom) showRoomSheet(context);
+        }),
+        if (waiting > 0) Positioned(left: -4, top: -8, child: _badge(waiting)),
+      ]);
     }
     return AnimatedSize(
       duration: const Duration(milliseconds: 240),
@@ -170,24 +181,78 @@ class _RoomPillState extends ConsumerState<RoomPill> {
             overflow: TextOverflow.ellipsis,
             style: noorSongTitleStyle(t.ac, size: 20)),
       ),
-      Text('Start · Join',
-          maxLines: 1, style: TextStyle(color: t.mute, fontSize: 12)),
+    ]);
+  }
+
+  /// This phone's own room: the code on the left (tap to copy), Join on
+  /// the right.
+  Widget _home(RoomState s) {
+    final t = NoorTheme.of(context);
+    final code = s.inRoom ? s.room?.code : null;
+    return Row(children: [
+      Icon(Icons.meeting_room_outlined, size: 20, color: t.ac),
+      const SizedBox(width: 10),
+      Expanded(
+        child: code == null
+            ? Text('Getting your room code…',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: t.mute, fontSize: 13))
+            : GestureDetector(
+                onTap: () {
+                  Clipboard.setData(ClipboardData(text: code));
+                  NoorToast.show(context, 'Room code copied');
+                },
+                child: Text(code,
+                    key: const ValueKey('room-pill-code'),
+                    semanticsLabel:
+                        'Your room code ${code.split('').join(' ')}',
+                    style: TextStyle(
+                        color: t.ac,
+                        fontSize: 17,
+                        letterSpacing: 4,
+                        fontWeight: FontWeight.w800)),
+              ),
+      ),
+      GestureDetector(
+        key: const ValueKey('room-join-open'),
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          HapticFeedback.selectionClick();
+          setState(() {
+            _open = true;
+            _error = null;
+            _code.clear();
+          });
+        },
+        child: Container(
+          height: 34,
+          padding: const EdgeInsets.fromLTRB(14, 0, 10, 0),
+          decoration: BoxDecoration(
+              color: t.ac, borderRadius: BorderRadius.circular(17)),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Text('Join a room',
+                style: TextStyle(
+                    color: t.onAc, fontSize: 13, fontWeight: FontWeight.w700)),
+            const SizedBox(width: 4),
+            Icon(Icons.arrow_forward_rounded, size: 16, color: t.onAc),
+          ]),
+        ),
+      ),
       const SizedBox(width: 2),
-      Icon(Icons.arrow_forward_rounded, size: 18, color: t.mute),
-      const SizedBox(width: 6),
     ]);
   }
 
   /// The code field with Join and Create (or, the first time, the name).
+  /// Joining someone's room: the code field on the left, cancel and Join
+  /// (once the code is whole) on the right. The first time, the name.
   Widget _join() {
     final t = NoorTheme.of(context);
     final rooms = ref.read(roomProvider.notifier);
     final name = ref.watch(roomNameProvider);
+    void close() => setState(() => _open = false);
     if (name.isEmpty) {
       return Row(children: [
-        _round(
-            Icons.close_rounded, 'Close', () => setState(() => _open = false)),
-        const SizedBox(width: 8),
         Expanded(
           child: TextField(
             key: const ValueKey('room-name'),
@@ -208,6 +273,8 @@ class _RoomPillState extends ConsumerState<RoomPill> {
                     TextStyle(color: t.mute, fontWeight: FontWeight.w400)),
           ),
         ),
+        _round(Icons.close_rounded, 'Cancel', close,
+            key: const ValueKey('room-join-cancel')),
         _round(
             Icons.check_rounded,
             'Save my name',
@@ -220,16 +287,18 @@ class _RoomPillState extends ConsumerState<RoomPill> {
     }
     final code = cleanRoomCode(_code.text);
     return Row(children: [
-      _round(Icons.close_rounded, 'Close', () => setState(() => _open = false)),
-      const SizedBox(width: 8),
       Expanded(
         child: TextField(
           key: const ValueKey('room-code'),
           controller: _code,
+          autofocus: true,
           maxLength: 7,
           autocorrect: false,
           textCapitalization: TextCapitalization.characters,
           onChanged: (_) => setState(() => _error = null),
+          onSubmitted: (_) {
+            if (code != null && !_busy) _run(() => rooms.knock(code));
+          },
           style: TextStyle(
               color: t.ac,
               fontSize: 16,
@@ -239,7 +308,7 @@ class _RoomPillState extends ConsumerState<RoomPill> {
               isDense: true,
               counterText: '',
               border: InputBorder.none,
-              hintText: _error ?? 'Room code',
+              hintText: _error ?? "Friend's room code",
               hintStyle: TextStyle(
                   color: _error != null ? const Color(0xFFB23A2E) : t.mute,
                   letterSpacing: 0,
@@ -247,21 +316,11 @@ class _RoomPillState extends ConsumerState<RoomPill> {
                   fontWeight: FontWeight.w400)),
         ),
       ),
+      _round(Icons.close_rounded, 'Cancel', close,
+          key: const ValueKey('room-join-cancel')),
       _round(Icons.login_rounded, 'Join',
           _busy || code == null ? null : () => _run(() => rooms.knock(code)),
-          key: const ValueKey('room-join')),
-      _round(
-          Icons.add_rounded,
-          'Create',
-          _busy || !rooms.available
-              ? null
-              : () async {
-                  await _run(rooms.start);
-                  if (mounted && _error == null)
-                    setState(() => _created = true);
-                },
-          filled: true,
-          key: const ValueKey('room-start')),
+          filled: true, key: const ValueKey('room-join')),
     ]);
   }
 
@@ -301,43 +360,19 @@ class _RoomPillState extends ConsumerState<RoomPill> {
   }
 
   Widget _inRoom(RoomState s) {
-    final t = NoorTheme.of(context);
     final room = s.room!;
     final me = ref.read(roomProvider.notifier).uid;
     final others = room.members.where((m) => m.uid != room.starUid).toList();
     final waiting = s.isStar ? room.waiting : 0;
 
-    // Just created (or still alone): the code to share, on the left.
-    Widget left;
-    if (others.isEmpty) {
-      left = GestureDetector(
-        onTap: () {
-          Clipboard.setData(ClipboardData(text: room.code));
-          NoorToast.show(context, 'Room code copied');
-        },
-        child: Text(room.code,
-            key: const ValueKey('room-pill-code'),
-            semanticsLabel: 'Room code ${room.code.split('').join(' ')}',
-            style: TextStyle(
-                color: t.ac,
-                fontSize: 15,
-                letterSpacing: 3,
-                fontWeight: FontWeight.w800)),
-      );
-    } else {
-      left = _Faces(members: others, away: s.away, me: me);
-    }
+    // Everyone but the star (who is on the right).
+    final left = _Faces(members: others, away: s.away, me: me);
     final pill = _frame(
       Row(children: [
         left,
         const Spacer(),
         _starName(room, me),
-        if (_created && s.isStar)
-          _round(Icons.thumb_up_alt_rounded, 'Done',
-              () => setState(() => _created = false),
-              filled: true, key: const ValueKey('room-created-ok'))
-        else
-          const SizedBox(width: 10),
+        const SizedBox(width: 10),
       ]),
       onTap: () => showRoomSheet(context),
     );
@@ -400,40 +435,42 @@ class _RoomPillState extends ConsumerState<RoomPill> {
             Positioned(
               left: -4,
               top: -4,
-              child: GestureDetector(
-                onTap: () => showRoomRequests(context),
-                child: Container(
-                  key: const ValueKey('room-waiting'),
-                  constraints: const BoxConstraints(minWidth: 22),
-                  height: 22,
-                  padding: const EdgeInsets.symmetric(horizontal: 6),
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: t.ac,
-                    borderRadius: BorderRadius.circular(11),
-                    border: Border.all(color: t.bg, width: 2),
-                  ),
-                  child: Text('$waiting',
-                      style: TextStyle(
-                          color: t.onAc,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800)),
-                ),
-              ),
+              child: _badge(waiting),
             ),
         ]),
       );
     });
   }
 
+  /// Waiting requests: a count; tap to answer them.
+  Widget _badge(int waiting) {
+    final t = NoorTheme.of(context);
+    return GestureDetector(
+      onTap: () => showRoomRequests(context),
+      child: Container(
+        key: const ValueKey('room-waiting'),
+        constraints: const BoxConstraints(minWidth: 22),
+        height: 22,
+        padding: const EdgeInsets.symmetric(horizontal: 6),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: t.ac,
+          borderRadius: BorderRadius.circular(11),
+          border: Border.all(color: t.bg, width: 2),
+        ),
+        child: Text('$waiting',
+            style: TextStyle(
+                color: t.onAc, fontSize: 11, fontWeight: FontWeight.w800)),
+      ),
+    );
+  }
+
   /// Everyone in the room as circles (the star first); tap one for the
   /// full name.
   Widget _everyone(RoomSnapshot room, RoomState s, String me) {
     final t = NoorTheme.of(context);
-    final all = [
-      ...room.members.where((m) => m.uid == room.starUid),
-      ...room.members.where((m) => m.uid != room.starUid),
-    ];
+    // The star is already on the pill's right: everyone else here.
+    final all = room.members.where((m) => m.uid != room.starUid).toList();
     return ListView.separated(
       key: const ValueKey('room-everyone'),
       scrollDirection: Axis.horizontal,

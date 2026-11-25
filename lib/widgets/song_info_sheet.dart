@@ -16,8 +16,7 @@ import '../theme/noor_song_card.dart';
 ///
 /// The page dims and softly blurs; the panel drops in like a record sleeve
 /// pulled from a shelf. Once it lands, the record slides half out of its
-/// sleeve and starts to turn, and the notes below come in one after
-/// another. Swipe it back up (it follows the finger), tap outside, or tap
+/// sleeve and starts to turn, and its numbers come in under it. Swipe it back up (it follows the finger), tap outside, or tap
 /// the handle to put it away.
 Future<void> showSongInfo(BuildContext context, Song song,
     {VoidCallback? onAddToPlaylist}) {
@@ -80,7 +79,6 @@ class _SongInfoSheetState extends ConsumerState<SongInfoSheet>
 
   /// How far the panel has been pulled back up by the finger (px).
   double _pull = 0;
-  bool _readMore = false;
 
   @override
   void dispose() {
@@ -251,8 +249,6 @@ class _SongInfoSheetState extends ConsumerState<SongInfoSheet>
       if (d?.duration != null && d!.duration! > Duration.zero)
         (SongDetails.clock(d.duration!), 'length'),
     ];
-    final credits = d?.credits ?? const <(String, String)>[];
-    final about = d?.description.trim() ?? '';
 
     return ListView(
       shrinkWrap: true,
@@ -400,75 +396,6 @@ class _SongInfoSheetState extends ConsumerState<SongInfoSheet>
                 ],
               ])),
 
-        // ── Liner notes: who made it ───────────────────────────────────
-        if (credits.isNotEmpty || (d?.hasMusicTags ?? false)) ...[
-          const SizedBox(height: 22),
-          _enter(0.62, const _Heading('Liner notes')),
-          const SizedBox(height: 4),
-          for (final (label, value) in [
-            ...credits,
-            if (d?.albumName != null && !credits.any((c) => c.$1 == 'Album'))
-              ('Album', d!.albumName!),
-          ])
-            _enter(0.66, _Credit(label: label, value: value)),
-        ],
-
-        // ── Tags ───────────────────────────────────────────────────────
-        if ((d?.keywords ?? const []).isNotEmpty) ...[
-          const SizedBox(height: 18),
-          _enter(
-              0.7,
-              Wrap(spacing: 6, runSpacing: 6, children: [
-                for (final k in d!.keywords.take(8))
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: t.wash,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text('#${k.replaceAll(' ', '')}',
-                        style: TextStyle(
-                            color: t.mute,
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w600)),
-                  ),
-              ])),
-        ],
-
-        // ── About ──────────────────────────────────────────────────────
-        if (about.isNotEmpty) ...[
-          const SizedBox(height: 22),
-          _enter(0.72, const _Heading('About')),
-          const SizedBox(height: 6),
-          _enter(
-              0.74,
-              GestureDetector(
-                onTap: () => setState(() => _readMore = !_readMore),
-                child: AnimatedSize(
-                  duration: const Duration(milliseconds: 260),
-                  curve: Curves.easeOutCubic,
-                  alignment: Alignment.topCenter,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(about,
-                          maxLines: _readMore ? 40 : 4,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                              color: t.ac, fontSize: 13, height: 1.45)),
-                      const SizedBox(height: 4),
-                      Text(_readMore ? 'Less' : 'More',
-                          style: TextStyle(
-                              color: t.mute,
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w700)),
-                    ],
-                  ),
-                ),
-              )),
-        ],
-
         const SizedBox(height: 10),
 
         // ── Handle: tap, or swipe up anywhere, to close ────────────────
@@ -491,25 +418,6 @@ class _SongInfoSheetState extends ConsumerState<SongInfoSheet>
         ),
       ],
     );
-  }
-}
-
-class _Heading extends StatelessWidget {
-  const _Heading(this.text);
-  final String text;
-  @override
-  Widget build(BuildContext context) {
-    final t = NoorTheme.of(context);
-    return Row(children: [
-      Text(text.toUpperCase(),
-          style: TextStyle(
-              color: t.mute,
-              fontSize: 11,
-              letterSpacing: 2.2,
-              fontWeight: FontWeight.w800)),
-      const SizedBox(width: 10),
-      Expanded(child: Container(height: 0.8, color: t.faint)),
-    ]);
   }
 }
 
@@ -551,60 +459,4 @@ class _Stat extends StatelessWidget {
       ),
     );
   }
-}
-
-/// "Singer ........ Arijit Singh": a role and a name joined by dots, like
-/// the credits on the back of a record.
-class _Credit extends StatelessWidget {
-  const _Credit({required this.label, required this.value});
-  final String label, value;
-  @override
-  Widget build(BuildContext context) {
-    final t = NoorTheme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 7),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Text(label.toUpperCase(),
-              style: TextStyle(
-                  color: const Color(0xFFB8893F),
-                  fontSize: 11.5,
-                  letterSpacing: 1.4,
-                  fontWeight: FontWeight.w800)),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
-              child: CustomPaint(
-                  size: const Size(double.infinity, 2), painter: _Dots(t.soft)),
-            ),
-          ),
-          Flexible(
-            flex: 3,
-            child: Text(value,
-                textAlign: TextAlign.right,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                    color: t.ac, fontSize: 14.5, fontWeight: FontWeight.w700)),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _Dots extends CustomPainter {
-  _Dots(this.color);
-  final Color color;
-  @override
-  void paint(Canvas canvas, Size size) {
-    final p = Paint()..color = color;
-    for (var x = 0.0; x < size.width; x += 5) {
-      canvas.drawCircle(Offset(x, size.height / 2), 0.9, p);
-    }
-  }
-
-  @override
-  bool shouldRepaint(_Dots old) => old.color != color;
 }

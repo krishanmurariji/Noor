@@ -12,7 +12,8 @@ const song = Song(
     thumbnailUrl: '');
 
 void main() {
-  testWidgets('the details drop in with liner notes; a swipe up puts them away',
+  testWidgets(
+      'the details drop in (record and numbers only); a swipe up puts them away',
       (t) async {
     t.view.physicalSize = const Size(411, 891);
     t.view.devicePixelRatio = 1;
@@ -49,9 +50,11 @@ void main() {
     }
     expect(find.text('Monsoon Letters'), findsOneWidget);
     expect(find.text('12.4M'), findsOneWidget);
-    expect(find.text('LINER NOTES'), findsOneWidget);
-    expect(find.text('SINGER'), findsOneWidget);
-    expect(find.text('Irshad Kamil'), findsOneWidget);
+    // Just the record and its numbers: no liner notes, tags or about.
+    expect(find.text('LINER NOTES'), findsNothing);
+    expect(find.text('SINGER'), findsNothing);
+    expect(find.text('ABOUT'), findsNothing);
+    expect(find.textContaining('#'), findsNothing);
     // No YouTube or Add to playlist buttons any more.
     expect(find.text('YouTube'), findsNothing);
     expect(find.text('Add to playlist'), findsNothing);
@@ -61,7 +64,7 @@ void main() {
     for (var i = 0; i < 6; i++) {
       await t.pump(const Duration(milliseconds: 100));
     }
-    expect(find.text('LINER NOTES'), findsNothing);
+    expect(find.text('12.4M'), findsNothing);
 
     // Again, with a long swipe that first scrolls the details to their
     // end: going on past the end puts the panel away too.
@@ -69,12 +72,12 @@ void main() {
     for (var i = 0; i < 14; i++) {
       await t.pump(const Duration(milliseconds: 100));
     }
-    expect(find.text('LINER NOTES'), findsOneWidget);
-    await t.drag(find.text('LINER NOTES'), const Offset(0, -900));
+    expect(find.text('12.4M'), findsOneWidget);
+    await t.drag(find.text('12.4M'), const Offset(0, -900));
     for (var i = 0; i < 6; i++) {
       await t.pump(const Duration(milliseconds: 100));
     }
-    expect(find.text('LINER NOTES'), findsNothing);
+    expect(find.text('12.4M'), findsNothing);
     expect(added, 0);
   });
 }

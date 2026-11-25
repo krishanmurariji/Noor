@@ -785,8 +785,13 @@ class _NamePillState extends ConsumerState<_NamePill> {
               () => setState(() => _edit =
                   TextEditingController(text: cleanRoomName(room.name))),
               key: const ValueKey('room-rename-edit')),
-        round(Icons.logout_rounded,
-            widget.star && alone ? 'End the room' : 'Leave the room', () {
+        // Alone in this phone's own room: leaving gives a fresh code.
+        round(
+            widget.star && alone
+                ? Icons.autorenew_rounded
+                : Icons.logout_rounded,
+            widget.star && alone ? 'Get a new room code' : 'Leave the room',
+            () {
           Navigator.of(context).maybePop();
           n.leave();
         }, key: const ValueKey('room-leave'), danger: true),

@@ -75,9 +75,14 @@ class RoomTuneNotifier extends StateNotifier<int> {
   }
 }
 
+/// Every phone always has a room of its own (its code shows on the
+/// player); off in tests that drive rooms by hand.
+final roomAutoHomeProvider = Provider<bool>((ref) => true);
+
 final roomProvider = StateNotifierProvider<RoomNotifier, RoomState>((ref) {
   final store = ref.watch(roomStoreProvider);
-  final n = RoomNotifier(ref, store == null ? null : RoomController(store));
+  final n = RoomNotifier(ref, store == null ? null : RoomController(store),
+      autoHome: ref.watch(roomAutoHomeProvider));
   return n;
 });
 
@@ -90,7 +95,8 @@ final roomEventsProvider = StreamProvider<RoomEvent>((ref) {
 /// Keeps this phone and the room together: the star's playback goes up to
 /// the room, a listener's player follows it.
 class RoomNotifier extends StateNotifier<RoomState> {
-  RoomNotifier(this._ref, this.controller) : super(const RoomState()) {
+  RoomNotifier(this._ref, this.controller, {this.autoHome = true})
+      : super(const RoomState()) {
     final c = controller;
     if (c == null) return;
     _subs.add(c.changes.listen(_onState));
@@ -106,9 +112,43 @@ class RoomNotifier extends StateNotifier<RoomState> {
     try {
       final prefs = await SharedPreferences.getInstance();
       final code = prefs.getString(_kRoom);
-      if (code == null || controller == null) return;
-      if (!await controller!.resume(code)) await prefs.remove(_kRoom);
+      if (code != null && controller != null) {
+        if (!await controller!.resume(code)) await prefs.remove(_kRoom);
+      }
     } catch (_) {}
+    _resumed = true;
+    _ensureHome();
+  }
+
+  /// Every phone always has a room: its own (where it's the star) unless
+  /// it's in someone else's. Made when the app opens with none to go back
+  /// to, and again after leaving a room, being turned away or the room
+  /// ending. Going to the background or closing the app keeps it (it's
+  /// rejoined on opening), so the code stays the same for a while.
+  final bool autoHome;
+  bool _resumed = false;
+  bool _homing = false;
+  bool _joining = false;
+  Timer? _homeTimer;
+
+  void _ensureHome({Duration wait = const Duration(milliseconds: 600)}) {
+    if (!autoHome || controller == null || !_resumed || !mounted) return;
+    _homeTimer?.cancel();
+    _homeTimer = Timer(wait, () async {
+      if (!mounted || _homing || _joining || state.role != RoomRole.none) {
+        return;
+      }
+      _homing = true;
+      try {
+        await controller!.start(await _name());
+      } on RoomStoreError catch (e) {
+        nlog('[R] making this phone\'s room: $e (again in 20 s)');
+        _homing = false;
+        _ensureHome(wait: const Duration(seconds: 20));
+        return;
+      } catch (_) {}
+      _homing = false;
+    });
   }
 
   Future<void> _remember(String? code) async {
@@ -151,6 +191,7 @@ class RoomNotifier extends StateNotifier<RoomState> {
         unawaited(_remember(null)); // left, removed, or the room ended
       }
       _role = s.role;
+      if (s.role == RoomRole.none) _ensureHome();
       _publisher.failed(); // a new star sends at once
       _follower?.reset();
       _tick?.cancel();
@@ -213,6 +254,12 @@ class RoomNotifier extends StateNotifier<RoomState> {
     final h = _handler;
     final c = controller;
     if (h == null || c == null) return;
+    // Alone in the room: nothing to send. Someone joining gets it at once.
+    if ((state.room?.members.length ?? 0) <= 1) {
+      _publisher.failed();
+      _queueKey = '';
+      return;
+    }
     final song = h.currentSong;
     final playing = h.player.playing;
     final pos = h.player.position;
@@ -283,7 +330,7 @@ class RoomNotifier extends StateNotifier<RoomState> {
   Future<String> _name() async {
     await _ref.read(roomNameProvider.notifier).loaded;
     final n = _ref.read(roomNameProvider);
-    return n.isEmpty ? 'A friend' : n;
+    return n.isEmpty ? 'Friend' : n;
   }
 
   Future<String?> start() async {
@@ -298,14 +345,23 @@ class RoomNotifier extends StateNotifier<RoomState> {
     }
   }
 
+  /// Asks to join [code]: this phone leaves its own room (or the one it's
+  /// in) first. Turned away, it gets a room of its own again.
   Future<String?> knock(String code) async {
     final c = controller;
     if (c == null) return 'Rooms are not set up in this build';
+    if (code == state.code) return "That's this room's own code";
+    _joining = true;
     try {
-      return await c.knock(code, await _name());
+      if (state.inRoom) await c.leave();
+      final why = await c.knock(code, await _name());
+      return why;
     } on RoomStoreError catch (e) {
       nlog('[R] knocking: $e');
       return "Couldn't reach the room · check the internet";
+    } finally {
+      _joining = false;
+      if (state.role == RoomRole.none) _ensureHome();
     }
   }
 
@@ -383,6 +439,7 @@ class RoomNotifier extends StateNotifier<RoomState> {
 
   @override
   void dispose() {
+    _homeTimer?.cancel();
     _tick?.cancel();
     for (final s in _subs) {
       s.cancel();
