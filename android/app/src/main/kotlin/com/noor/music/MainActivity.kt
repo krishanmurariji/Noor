@@ -44,6 +44,10 @@ import java.util.concurrent.Executors
  * plugin's activity, or the channel above never exists.
  */
 class MainActivity : AudioServiceActivity() {
+    companion object {
+        @Volatile private var crashesKept = false
+    }
+
     private val io = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
 
@@ -85,9 +89,62 @@ class MainActivity : AudioServiceActivity() {
     private var askedOnReturn = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        keepCrashes()
         pendingPlay = playRequestOf(intent)
         openedBy = describe(intent)
         super.onCreate(savedInstanceState)
+    }
+
+    /// A crash in Noor's own Android code is written down before the app
+    /// goes, so the next start can show it in the Playback Log.
+    private fun keepCrashes() {
+        if (crashesKept) return
+        crashesKept = true
+        val before = Thread.getDefaultUncaughtExceptionHandler()
+        val dir = filesDir
+        Thread.setDefaultUncaughtExceptionHandler { thread, e ->
+            try {
+                val trace = android.util.Log.getStackTraceString(e)
+                File(dir, "last_crash.txt").writeText(
+                    "${java.util.Date()} on ${thread.name}: ${trace.take(6000)}")
+            } catch (ignored: Throwable) {}
+            before?.uncaughtException(thread, e)
+        }
+    }
+
+    private fun recentExits(): List<Map<String, Any?>> {
+        if (Build.VERSION.SDK_INT < 30) return emptyList()
+        return try {
+            val am = getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+            am.getHistoricalProcessExitReasons(packageName, 0, 8).map { x ->
+                val reason = when (x.reason) {
+                    android.app.ApplicationExitInfo.REASON_ANR -> "froze (not responding)"
+                    android.app.ApplicationExitInfo.REASON_CRASH -> "crashed"
+                    android.app.ApplicationExitInfo.REASON_CRASH_NATIVE -> "crashed (native)"
+                    android.app.ApplicationExitInfo.REASON_LOW_MEMORY -> "closed by Android: low memory"
+                    android.app.ApplicationExitInfo.REASON_SIGNALED -> "killed by Android"
+                    android.app.ApplicationExitInfo.REASON_EXCESSIVE_RESOURCE_USAGE -> "closed by Android: too much battery or CPU"
+                    android.app.ApplicationExitInfo.REASON_USER_REQUESTED -> "closed by you (force stop or swipe)"
+                    android.app.ApplicationExitInfo.REASON_USER_STOPPED -> "stopped by you"
+                    android.app.ApplicationExitInfo.REASON_EXIT_SELF -> "closed itself"
+                    android.app.ApplicationExitInfo.REASON_DEPENDENCY_DIED -> "closed: something it needs stopped"
+                    android.app.ApplicationExitInfo.REASON_INITIALIZATION_FAILURE -> "failed to start"
+                    android.app.ApplicationExitInfo.REASON_PERMISSION_CHANGE -> "closed: a permission changed"
+                    android.app.ApplicationExitInfo.REASON_PACKAGE_UPDATED -> "closed for an update"
+                    else -> "closed (reason ${x.reason})"
+                }
+                mapOf(
+                    "time" to x.timestamp,
+                    "reason" to reason,
+                    "description" to x.description,
+                    "importance" to x.importance,
+                    "pssKb" to x.pss,
+                    "rssKb" to x.rss,
+                )
+            }
+        } catch (ignored: Throwable) {
+            emptyList()
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -130,6 +187,22 @@ class MainActivity : AudioServiceActivity() {
                 }
             }
         }
+        // Why Noor closed last time (Android keeps the reasons: a crash, a
+        // freeze, low memory, killed by the system…) and any crash it wrote
+        // down, for the Playback Log.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "noor/exits")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "recent" -> result.success(recentExits())
+                    "crash" -> {
+                        val f = File(filesDir, "last_crash.txt")
+                        val text = if (f.exists()) f.readText().take(4000) else null
+                        f.delete()
+                        result.success(text)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
         // Rooms: the invite goes out through Android's share sheet.
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "noor/share")
             .setMethodCallHandler { call, result ->

@@ -781,7 +781,7 @@ class _NamePillState extends ConsumerState<_NamePill> {
         if (widget.star)
           round(
               Icons.edit_outlined,
-              'Rename the room',
+              'Change your name',
               () => setState(() => _edit =
                   TextEditingController(text: cleanRoomName(room.name))),
               key: const ValueKey('room-rename-edit')),

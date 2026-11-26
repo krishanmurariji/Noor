@@ -102,6 +102,14 @@ class RoomNotifier extends StateNotifier<RoomState> {
     _subs.add(c.changes.listen(_onState));
     _subs.add(c.events.listen(_events.add));
     unawaited(_resume());
+    // A name given (or changed) shows in the room at once.
+    _ref.listen<String>(roomNameProvider, (prev, next) {
+      if (next.isNotEmpty && next != prev) {
+        unawaited(c.setMyName(next).catchError((Object e) {
+          nlog('[R] could not show the new name: $e');
+        }));
+      }
+    });
   }
 
   static const _kRoom = 'room_code';
@@ -330,7 +338,12 @@ class RoomNotifier extends StateNotifier<RoomState> {
   Future<String> _name() async {
     await _ref.read(roomNameProvider.notifier).loaded;
     final n = _ref.read(roomNameProvider);
-    return n.isEmpty ? 'Friend' : n;
+    if (n.isNotEmpty) return n;
+    // Until a name is given: "Guest" and a tag, like a room code.
+    try {
+      await controller?.store.ready();
+    } catch (_) {}
+    return guestName(controller?.uid ?? '');
   }
 
   Future<String?> start() async {
@@ -390,8 +403,11 @@ class RoomNotifier extends StateNotifier<RoomState> {
   Future<void> remove(String uid) => _safe((c) => c.remove(uid));
   Future<void> handOver(RoomMember m) => _safe((c) => c.handOver(m));
 
-  /// The star renames the room (at most [kRoomNameMax] letters).
-  Future<void> rename(String name) => _safe((c) => c.rename(name));
+  /// The star's name is the room's: renaming changes this phone's name,
+  /// which the room then shows (at most [kRoomNameMax] letters).
+  Future<void> rename(String name) async {
+    await _ref.read(roomNameProvider.notifier).set(name);
+  }
 
   /// A listener: jump straight to the star's place now.
   void syncNow() {

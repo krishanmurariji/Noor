@@ -21,6 +21,15 @@ const kRoomAwayMs = 45000;
 /// app was closed or the phone lost its connection).
 const kRoomGoneMs = 120000;
 
+/// The name a phone has until its person gives theirs: "Guest" and four
+/// letters of its id, like a room code.
+String guestName(String uid) {
+  final letters = uid.toUpperCase().replaceAll(RegExp('[^A-Z0-9]'), '');
+  final tag =
+      letters.length >= 4 ? letters.substring(0, 4) : letters.padRight(4, 'X');
+  return 'Guest $tag';
+}
+
 /// A room name as stored: trimmed, at most [kRoomNameMax] letters.
 String cleanRoomName(String name) {
   final r = name.trim().runes.toList();
@@ -560,6 +569,7 @@ class RoomController {
           await store.update(_room(code), {
             'info/star': next.first.uid,
             'info/starName': next.first.name,
+            'info/name': cleanRoomName(next.first.name),
             'members/$uid': null,
           });
         }
@@ -626,6 +636,7 @@ class RoomController {
     await store.update(_room(_code), {
       'info/star': m.uid,
       'info/starName': m.name,
+      'info/name': cleanRoomName(m.name),
       for (final a in room.asks.where((a) => !a.isSong)) 'asks/${a.id}': null,
     });
   }
@@ -635,6 +646,27 @@ class RoomController {
     final n = cleanRoomName(name);
     if (!_state.isStar || n.isEmpty) return;
     await store.write('${_room(_code)}/info/name', n);
+  }
+
+  /// This phone's name changed: it shows at once in the room. A room
+  /// carries its star's name, so the star's room is renamed with it.
+  Future<void> setMyName(String name) async {
+    final n = cleanRoomName(name);
+    if (n.isEmpty) return;
+    _myName = n;
+    final code = _state.code;
+    if (!_state.inRoom || code == null) return;
+    if (_state.isStar) {
+      await store.update(_room(code), {
+        'members/$uid/name': n,
+        'info/starName': n,
+        'info/name': n,
+      });
+    } else {
+      try {
+        await store.write('${_room(code)}/members/$uid/name', n);
+      } on RoomStoreError catch (_) {/* the room's rules keep it */}
+    }
   }
 
   int _sync = 0;

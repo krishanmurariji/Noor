@@ -12,6 +12,8 @@ import 'app.dart';
 import 'providers/library_provider.dart';
 import 'theme/noor_palette.dart';
 import 'services/app_log.dart';
+import 'services/exit_reasons.dart';
+import 'package:path_provider/path_provider.dart';
 import 'services/audio_handler.dart';
 import 'services/launch_requests.dart';
 
@@ -57,6 +59,13 @@ Future<void> main() async {
     statusBarColor: Colors.transparent,
     statusBarIconBrightness: Brightness.dark,
   ));
+
+  // The log lives on the phone too, so it survives Noor closing; then why
+  // Noor closed last time goes into it.
+  try {
+    await AppLog.instance.persistTo(await getApplicationSupportDirectory());
+  } catch (_) {}
+  unawaited(logPastExits());
 
   unawaited(_removeLegacyApiKey());
   runApp(const _Bootstrap());

@@ -281,6 +281,26 @@ void main() {
       expect((p as Map)['at'], now + 250);
     });
 
+    test('a name given later shows in the room (it carries the star\'s name)',
+        () async {
+      final code = await startAndLetIn();
+      expect(guestName('abcd1234'), 'Guest ABCD');
+      await aanya.setMyName('Aanyashree');
+      await rohan.setMyName('Rohan K');
+      await _settle();
+      final info = (await aanya.store.read('rooms/$code/info')) as Map;
+      expect(info['starName'], 'Aanyashree');
+      expect(info['name'], 'Aanyashree');
+      expect(rohan.state.room!.starName, 'Aanyashree');
+      expect(aanya.state.room!.members.map((m) => m.name),
+          containsAll(['Aanyashree', 'Rohan K']));
+      // Handing over: the room takes the new star's name.
+      await aanya.handOver(
+          aanya.state.room!.members.firstWhere((m) => m.name == 'Rohan K'));
+      await _settle();
+      expect(rohan.state.room!.name, 'Rohan K');
+    });
+
     test('closed and opened again: back in the room', () async {
       final code = await startAndLetIn();
       rohan.dispose(); // the app was swiped away
@@ -609,7 +629,8 @@ void main() {
         await _settle();
       });
       await tester.pumpAndSettle();
-      expect(find.text('Sunday nig'), findsOneWidget);
+      // The star's name is the room's: the card and the pill's ★ name.
+      expect(find.text('Sunday nig'), findsNWidgets(2));
       // …swiped right it has Sync and Share…
       await tester.fling(find.byKey(const ValueKey('room-name-pill')),
           const Offset(300, 0), 1000);

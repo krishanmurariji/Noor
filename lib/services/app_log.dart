@@ -1,4 +1,5 @@
 import 'dart:collection';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
@@ -32,12 +33,89 @@ class AppLog {
 
   List<String> get lines => List.unmodifiable(_lines);
 
+  RandomAccessFile? _file;
+  File? _path;
+  int _written = 0;
+
+  /// The last this many bytes are kept on the phone.
+  static const int keepBytes = 300 * 1024;
+
+  /// Keeps the log on the phone as it is written (straight to the file,
+  /// nothing held back), so it survives the app closing unexpectedly. The
+  /// previous session's lines come back first, under a divider.
+  Future<void> persistTo(Directory dir) async {
+    try {
+      final current = File('${dir.path}/noor_log.txt');
+      final previous = File('${dir.path}/noor_log_previous.txt');
+      if (await current.exists()) {
+        final old = (await current.readAsString())
+            .split('\n')
+            .where((l) => l.isNotEmpty)
+            .toList();
+        if (old.isNotEmpty) {
+          final keep = old.length > 350 ? old.sublist(old.length - 350) : old;
+          final now = _lines.toList();
+          _lines
+            ..clear()
+            ..add(
+                '──────── previous session (before Noor last closed) ────────')
+            ..addAll(keep)
+            ..add('──────── this session ────────')
+            ..addAll(now);
+          while (_lines.length > capacity) {
+            _lines.removeFirst();
+          }
+          revision.value++;
+        }
+        if (await previous.exists()) await previous.delete();
+        await current.rename(previous.path);
+      }
+      _path = current;
+      _file = await current.open(mode: FileMode.append);
+      // This session's lines so far.
+      final start = _lines.toList();
+      final at = start.indexOf('──────── this session ────────');
+      for (final l in at >= 0 ? start.sublist(at + 1) : start) {
+        _write(l);
+      }
+    } catch (e) {
+      debugPrint('[N] log file: $e');
+    }
+  }
+
+  void _write(String line) {
+    final f = _file;
+    if (f == null) return;
+    try {
+      f.writeStringSync('$line\n');
+      _written += line.length + 1;
+      if (_written > keepBytes) _trim();
+    } catch (_) {}
+  }
+
+  /// Keeps the file to the newest half when it grows past [keepBytes].
+  void _trim() {
+    final p = _path;
+    final f = _file;
+    if (p == null || f == null) return;
+    try {
+      f.closeSync();
+      final text = p.readAsStringSync();
+      final tail = text.substring(text.length - keepBytes ~/ 2);
+      p.writeAsStringSync(tail.substring(tail.indexOf('\n') + 1));
+      _written = keepBytes ~/ 2;
+      _file = p.openSync(mode: FileMode.append);
+    } catch (_) {}
+  }
+
   void add(String message, {DateTime? now}) {
     final t = (now ?? DateTime.now());
     String two(int n) => n.toString().padLeft(2, '0');
     final stamp =
         '${two(t.hour)}:${two(t.minute)}:${two(t.second)}.${t.millisecond.toString().padLeft(3, '0')}';
-    _lines.addLast('$stamp  ${redactSecrets(message)}');
+    final line = '$stamp  ${redactSecrets(message)}';
+    _lines.addLast(line);
+    _write(line);
     while (_lines.length > capacity) {
       _lines.removeFirst();
     }
