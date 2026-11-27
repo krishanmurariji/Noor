@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../services/app_log.dart';
@@ -30,8 +31,13 @@ class ConnectionNotifier extends StateNotifier<Connection> {
   })  : _check = check ?? ConnectivityProbe().isOnline,
         _auto = start,
         super(Connection.online) {
-    if (start) unawaited(recheck());
+    if (start) {
+      unawaited(recheck());
+      _life = AppLifecycleListener(onResume: () => unawaited(recheck()));
+    }
   }
+
+  AppLifecycleListener? _life;
 
   /// Whether checks repeat on their own (off in widget tests, which drive
   /// the connection themselves and must not touch the real network).
@@ -51,8 +57,12 @@ class ConnectionNotifier extends StateNotifier<Connection> {
     state = c;
     _timer?.cancel();
     if (!_auto) return;
-    _timer = Timer(c == Connection.online ? onlineEvery : offlineEvery,
-        () => unawaited(recheck()));
+    // Out of sight, checking often only wakes the phone's radio: playback
+    // reports failures itself, and the check runs again when Noor opens.
+    final life = WidgetsBinding.instance.lifecycleState;
+    final away = life != null && life != AppLifecycleState.resumed;
+    final every = c == Connection.online ? onlineEvery : offlineEvery;
+    _timer = Timer(away ? every * 4 : every, () => unawaited(recheck()));
   }
 
   /// Checks the internet now.
@@ -77,6 +87,7 @@ class ConnectionNotifier extends StateNotifier<Connection> {
 
   @override
   void dispose() {
+    _life?.dispose();
     _timer?.cancel();
     super.dispose();
   }

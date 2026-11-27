@@ -21,6 +21,10 @@ const kRoomAwayMs = 45000;
 /// app was closed or the phone lost its connection).
 const kRoomGoneMs = 120000;
 
+/// How often a phone alone in its room says it's still here (others in
+/// the room: every 15 s).
+const kRoomAloneBeatMs = 120000;
+
 /// The name a phone has until its person gives theirs: "Guest" and four
 /// letters of its id, like a room code.
 String guestName(String uid) {
@@ -413,7 +417,14 @@ class RoomController {
         // Firebase stops the stream once this phone may no longer read the
         // room: removed, blocked, or the room ended.
         onError: (Object e) => _ended(code, "You're no longer in the room")));
-    _beat = Timer.periodic(const Duration(seconds: 15), (_) => _heartbeat());
+    _beat = Timer.periodic(const Duration(seconds: 15), (_) {
+      // Alone (this phone's own room, as it is most of the time): nobody
+      // needs to see it's still here, so far fewer trips to the server.
+      final alone = (_state.room?.members.length ?? 1) <= 1;
+      final since = DateTime.now().millisecondsSinceEpoch - _lastBeatMs;
+      if (alone && since < kRoomAloneBeatMs) return;
+      unawaited(_heartbeat());
+    });
     unawaited(() async {
       // A few readings at the start: the quickest round trip wins.
       for (var i = 0; i < 12 && _state.code == code; i++) {
@@ -424,9 +435,12 @@ class RoomController {
     }());
   }
 
+  int _lastBeatMs = 0;
+
   Future<void> _heartbeat() async {
     final code = _state.code;
     if (!_state.inRoom || code == null) return;
+    _lastBeatMs = DateTime.now().millisecondsSinceEpoch;
     try {
       await _readClock('${_room(code)}/members/$uid/seen');
     } catch (_) {/* next beat */}
@@ -489,6 +503,10 @@ class RoomController {
     final role = room.starUid == uid ? RoomRole.star : RoomRole.listener;
 
     if (was.room != null) _announce(was.room!, room, role);
+    // Someone came in: show them at once that this phone is here.
+    if ((was.room?.members.length ?? 1) <= 1 && room.members.length > 1) {
+      unawaited(_heartbeat());
+    }
     final note = room.notes[uid];
     if (note != null && note.$2 > _lastNote) {
       _lastNote = note.$2;

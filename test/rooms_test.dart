@@ -258,7 +258,7 @@ void main() {
       await _settle();
       for (var i = 1; i < kRoomCap; i++) {
         await aanya.store.write(
-            'rooms/$code/members/m$i', {'name': 'M$i', 'at': i, 'seen': i});
+            'rooms/$code/members/m$i', {'name': 'M$i', 'at': i, 'seen': 9e15});
       }
       await rohan.knock(code, 'Rohan');
       await _settle();

@@ -198,6 +198,7 @@ class RoomNotifier extends StateNotifier<RoomState> {
 
   void _onState(RoomState s) {
     if (!mounted) return;
+    final before = state.room?.members.length ?? 1;
     state = s;
     if (s.role != _role) {
       if (s.inRoom) {
@@ -219,6 +220,10 @@ class RoomNotifier extends StateNotifier<RoomState> {
       }
     } else if (s.inRoom) {
       if (s.isListener) _follow();
+      // Someone came in: they get what plays now at once.
+      if (s.isStar && before <= 1 && (s.room?.members.length ?? 1) > 1) {
+        _publish();
+      }
     }
   }
 
@@ -251,11 +256,14 @@ class RoomNotifier extends StateNotifier<RoomState> {
   int _steps = 0;
 
   void _step() {
-    // Idle in the background (nothing playing): every 5 s is plenty.
+    // Nothing to keep in step (alone in the room, or idle in the
+    // background): every 5 s is plenty.
     final h = _handler;
     final life = WidgetsBinding.instance.lifecycleState;
     final away = life != null && life != AppLifecycleState.resumed;
-    if (away && !(h?.player.playing ?? false) && (_steps++ % 10) != 0) return;
+    final alone = (state.room?.members.length ?? 1) <= 1;
+    final idle = alone || (away && !(h?.player.playing ?? false));
+    if (idle && (_steps++ % 10) != 0) return;
     if (state.isStar) {
       _publish();
     } else if (state.isListener) {

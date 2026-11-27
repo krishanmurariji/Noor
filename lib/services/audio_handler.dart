@@ -9,7 +9,7 @@ import 'dart:math';
 
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/widgets.dart';
-import 'package:flutter/foundation.dart' show ValueNotifier;
+import 'package:flutter/foundation.dart' show ValueNotifier, visibleForTesting;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
@@ -187,12 +187,11 @@ class NebulaAudioHandler extends BaseAudioHandler with SeekHandler {
     if (DateTime.now().isBefore(_upgradesPausedUntil)) return;
     if (_runner.isBusy || _acquirer.isBusy) return;
     if (_resolver.globalCooldownSeconds > 0 || _waitTok != null) return;
-    // Only while Noor is open or playing: idle in the background, Android
-    // closes apps that keep busy.
+    // Only while Noor is on screen: a better copy is a whole download (and
+    // YouTube's puzzle solved in a web view), not worth the battery while
+    // the phone is in a pocket.
     final life = WidgetsBinding.instance.lifecycleState;
-    if (life != null && life != AppLifecycleState.resumed && !_player.playing) {
-      return;
-    }
+    if (life != null && life != AppLifecycleState.resumed) return;
     final net = await _networkState();
     if (!net.wifi) return;
 
@@ -1181,7 +1180,7 @@ class NebulaAudioHandler extends BaseAudioHandler with SeekHandler {
     // for YouTube doesn't.
     final playing =
         switching ? !isWaitingForYoutube : _player.playing;
-    playbackState.add(playbackState.value.copyWith(
+    final next = playbackState.value.copyWith(
       controls: [
         MediaControl.skipToPrevious,
         if (playing) MediaControl.pause else MediaControl.play,
@@ -1215,7 +1214,32 @@ class NebulaAudioHandler extends BaseAudioHandler with SeekHandler {
       bufferedPosition: _player.bufferedPosition,
       speed: _player.speed,
       queueIndex: _idx,
-    ));
+    );
+    if (sameForControls(playbackState.value, next)) return;
+    playbackState.add(next);
+  }
+
+  /// The player reports every half second while playing (its buffer grew).
+  /// Android's media controls work out the position by themselves, so
+  /// only real changes go to them: fewer wake-ups for the whole app.
+  @visibleForTesting
+  static bool sameForControls(PlaybackState was, PlaybackState now) {
+    if (was.playing != now.playing ||
+        was.processingState != now.processingState ||
+        was.queueIndex != now.queueIndex ||
+        was.speed != now.speed ||
+        was.controls.length != now.controls.length) {
+      return false;
+    }
+    for (var i = 0; i < was.controls.length; i++) {
+      if (was.controls[i].action != now.controls[i].action) return false;
+    }
+    // Where the controls think the song is vs where it is (a seek, a stall).
+    final drift = (was.position - now.updatePosition).inMilliseconds.abs();
+    if (drift > 1000) return false;
+    final buffered =
+        (was.bufferedPosition - now.bufferedPosition).inMilliseconds.abs();
+    return buffered < 10000;
   }
 
   @override

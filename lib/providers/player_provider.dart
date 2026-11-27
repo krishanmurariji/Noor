@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:audio_service/audio_service.dart';
 import '../models/song.dart';
@@ -313,11 +314,33 @@ final playbackProgressProvider =
     }
   }
 
-  final subs = <StreamSubscription<dynamic>>[
-    player.positionStream.listen((p) {
-      position = p;
+  // The song's place ticks several times a second, only for the screen:
+  // not while Noor is out of sight.
+  StreamSubscription<Duration>? ticks;
+  void follow(bool onScreen) {
+    if (onScreen && ticks == null) {
+      position = player.position;
       emit();
-    }),
+      ticks = player.positionStream.listen((p) {
+        position = p;
+        emit();
+      });
+    } else if (!onScreen && ticks != null) {
+      ticks!.cancel();
+      ticks = null;
+    }
+  }
+
+  final life = WidgetsBinding.instance.lifecycleState;
+  follow(life == null || life == AppLifecycleState.resumed);
+  final lifecycle = AppLifecycleListener(
+      onStateChange: (s) => follow(s == AppLifecycleState.resumed));
+  ref.onDispose(() {
+    lifecycle.dispose();
+    ticks?.cancel();
+  });
+
+  final subs = <StreamSubscription<dynamic>>[
     // null means "new song, length unknown yet" → reset to zero.
     player.durationStream.listen((d) {
       duration = d ?? Duration.zero;
