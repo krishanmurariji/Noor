@@ -8,6 +8,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:audio_service/audio_service.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter/foundation.dart' show ValueNotifier;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -186,6 +187,12 @@ class NebulaAudioHandler extends BaseAudioHandler with SeekHandler {
     if (DateTime.now().isBefore(_upgradesPausedUntil)) return;
     if (_runner.isBusy || _acquirer.isBusy) return;
     if (_resolver.globalCooldownSeconds > 0 || _waitTok != null) return;
+    // Only while Noor is open or playing: idle in the background, Android
+    // closes apps that keep busy.
+    final life = WidgetsBinding.instance.lifecycleState;
+    if (life != null && life != AppLifecycleState.resumed && !_player.playing) {
+      return;
+    }
     final net = await _networkState();
     if (!net.wifi) return;
 

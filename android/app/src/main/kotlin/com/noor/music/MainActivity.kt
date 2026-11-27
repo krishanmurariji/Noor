@@ -112,6 +112,31 @@ class MainActivity : AudioServiceActivity() {
         }
     }
 
+    /// Processor time Noor has used so far (ms), and each of its threads'
+    /// (clock ticks, from /proc), so a busy background can be traced to
+    /// its thread by name.
+    private fun cpuNow(): Map<String, Any?> {
+        val threads = mutableListOf<Map<String, Any?>>()
+        try {
+            File("/proc/self/task").listFiles()?.forEach { t ->
+                try {
+                    val stat = File(t, "stat").readText()
+                    val open = stat.indexOf('(')
+                    val close = stat.lastIndexOf(')')
+                    val name = stat.substring(open + 1, close)
+                    val rest = stat.substring(close + 2).split(' ')
+                    // utime and stime are fields 14 and 15 (rest starts at 3).
+                    val ticks = rest[11].toLong() + rest[12].toLong()
+                    threads.add(mapOf("id" to t.name, "name" to name, "ticks" to ticks))
+                } catch (ignored: Throwable) {}
+            }
+        } catch (ignored: Throwable) {}
+        return mapOf(
+            "totalMs" to android.os.Process.getElapsedCpuTime(),
+            "threads" to threads,
+        )
+    }
+
     private fun recentExits(): List<Map<String, Any?>> {
         if (Build.VERSION.SDK_INT < 30) return emptyList()
         return try {
@@ -194,6 +219,7 @@ class MainActivity : AudioServiceActivity() {
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "recent" -> result.success(recentExits())
+                    "cpu" -> result.success(cpuNow())
                     "crash" -> {
                         val f = File(filesDir, "last_crash.txt")
                         val text = if (f.exists()) f.readText().take(4000) else null

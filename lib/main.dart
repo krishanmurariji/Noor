@@ -14,6 +14,7 @@ import 'providers/library_provider.dart';
 import 'theme/noor_palette.dart';
 import 'services/app_log.dart';
 import 'services/exit_reasons.dart';
+import 'services/cpu_watch.dart';
 import 'package:path_provider/path_provider.dart';
 import 'services/audio_handler.dart';
 import 'services/launch_requests.dart';
@@ -68,6 +69,7 @@ Future<void> main() async {
   } catch (_) {}
   nlog('[N] Noor ${AppVersion.label} started');
   unawaited(logPastExits());
+  unawaited(CpuWatch.instance.start());
 
   unawaited(_removeLegacyApiKey());
   runApp(const _Bootstrap());

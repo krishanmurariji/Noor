@@ -171,6 +171,21 @@ class FirebaseRoomStore extends RoomStore {
   @visibleForTesting
   http.Client streamClient() => http.Client();
 
+  bool _online = true;
+  bool _quiet = false;
+  Completer<void>? _backOnline;
+
+  /// The phone's connection came or went: streams wait while it's gone and
+  /// pick up again as soon as it's back.
+  void setOnline(bool online) {
+    if (_online == online) return;
+    _online = online;
+    if (online) {
+      _backOnline?.complete();
+      _backOnline = null;
+    }
+  }
+
   @override
   Stream<Object?> watch(String path) {
     late StreamController<Object?> out;
@@ -214,6 +229,10 @@ class FirebaseRoomStore extends RoomStore {
                   if (key != last) {
                     last = key;
                     wait = 1;
+                    if (_quiet) {
+                      _quiet = false;
+                      nlog('[R] room stream back');
+                    }
                     out.add(tree.value);
                   }
                   break;
@@ -232,12 +251,25 @@ class FirebaseRoomStore extends RoomStore {
             break;
           }
         } catch (e) {
-          nlog('[R] room stream dropped: $e');
+          if (!_quiet) {
+            _quiet = true;
+            nlog('[R] room stream dropped: $e (trying again quietly)');
+          }
         } finally {
           if (!identical(client, _http)) client?.close();
           client = null;
         }
         if (closed) break;
+        if (!_online) {
+          // No internet: wait for it to come back (or a minute), instead
+          // of trying every few seconds.
+          await Future.any<void>([
+            (_backOnline ??= Completer<void>()).future,
+            Future<void>.delayed(const Duration(minutes: 1)),
+          ]);
+          wait = 1;
+          continue;
+        }
         await Future<void>.delayed(Duration(seconds: wait));
         wait = (wait * 2).clamp(1, 15);
       }

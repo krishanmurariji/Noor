@@ -97,6 +97,9 @@ final youtubeSuggestionsProvider =
     final list = await ref
         .read(suggestionFetcherProvider)(q)
         .timeout(const Duration(seconds: 4));
+    // Typed on meanwhile: this answer is no longer wanted (and the provider
+    // is gone, so it can't be kept).
+    if (gone) return list;
     // Keep the answer for a minute: typing back to it shows it at once.
     final link = ref.keepAlive();
     final timer = Timer(const Duration(minutes: 1), link.close);

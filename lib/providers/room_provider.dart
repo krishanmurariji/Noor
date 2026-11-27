@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -9,6 +10,7 @@ import '../services/audio_handler.dart';
 import '../services/rooms/firebase_room_store.dart';
 import '../services/rooms/room.dart';
 import '../services/rooms/room_store.dart';
+import 'connection_provider.dart';
 import '../services/rooms/room_sync.dart';
 export '../services/rooms/room_sync.dart'
     show FollowKind, FollowStep, followStep;
@@ -18,7 +20,12 @@ import 'player_provider.dart';
 /// (Rooms then say so instead of starting).
 final roomStoreProvider = Provider<RoomStore?>((ref) {
   const config = RoomConfig.fromBuild;
-  return config.ready ? FirebaseRoomStore(config) : null;
+  if (!config.ready) return null;
+  final store = FirebaseRoomStore(config);
+  // Without internet the room waits quietly instead of retrying.
+  ref.listen<Connection>(
+      connectionProvider, (_, c) => store.setOnline(c == Connection.online));
+  return store;
 });
 
 /// The name this phone shows in rooms (asked once, then remembered).
@@ -241,7 +248,14 @@ class RoomNotifier extends StateNotifier<RoomState> {
     return s;
   }
 
+  int _steps = 0;
+
   void _step() {
+    // Idle in the background (nothing playing): every 5 s is plenty.
+    final h = _handler;
+    final life = WidgetsBinding.instance.lifecycleState;
+    final away = life != null && life != AppLifecycleState.resumed;
+    if (away && !(h?.player.playing ?? false) && (_steps++ % 10) != 0) return;
     if (state.isStar) {
       _publish();
     } else if (state.isListener) {

@@ -8,6 +8,7 @@ import 'services/rooms/room.dart';
 import 'services/audio_devices.dart';
 import 'services/updater.dart';
 import 'services/app_log.dart';
+import 'services/cpu_watch.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -92,6 +93,13 @@ class NebulaApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final themeMode = ref.watch(themeProvider);
+    // What Noor is up to, for the processor watchdog's log line.
+    CpuWatch.instance.describe = () {
+      final p = ref.read(playerProvider).status.name;
+      final r = ref.read(roomProvider);
+      final people = r.room?.members.length ?? 0;
+      return 'player $p · room ${r.role.name}${people > 1 ? ' ($people in it)' : ''}';
+    };
     // Every song that starts playing goes to My History and is remembered
     // as the last played song (shown paused when the app opens again).
     ref.listen<Song?>(playerProvider.select((s) => s.song), (prev, song) {

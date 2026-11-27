@@ -252,6 +252,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   }
 
   void _edgeTick() {
+    // A drag can end without word (the card rebuilt away, Noor sent to the
+    // background): never keep ticking 60 times a second for nothing.
+    // (Holding still at the edge is fine: it keeps scrolling.)
+    final life = WidgetsBinding.instance.lifecycleState;
+    if (_draggingId == null ||
+        (life != null && life != AppLifecycleState.resumed)) {
+      _stopEdgeScroll();
+      return;
+    }
     final at = _dragAt;
     final box = _sliderKey.currentContext?.findRenderObject() as RenderBox?;
     if (at == null || box == null || !_sliderScroll.hasClients) return;
