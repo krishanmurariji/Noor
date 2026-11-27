@@ -676,11 +676,22 @@ class _NamePillState extends ConsumerState<_NamePill> {
     super.dispose();
   }
 
+  /// This phone's own name in the room (the star's is also the room's).
+  String _myName() {
+    final saved = ref.read(roomNameProvider);
+    if (saved.isNotEmpty) return cleanRoomName(saved);
+    final uid = ref.read(roomProvider.notifier).uid;
+    for (final m in widget.room.members) {
+      if (m.uid == uid && m.name.isNotEmpty) return cleanRoomName(m.name);
+    }
+    return uid.isEmpty ? '' : guestName(uid);
+  }
+
   void _save() {
     final c = _edit;
     if (c == null) return;
     final name = cleanRoomName(c.text);
-    if (name.isNotEmpty && name != widget.room.name) {
+    if (name.isNotEmpty && name != _myName()) {
       ref.read(roomProvider.notifier).rename(name);
     }
     setState(() => _edit = null);
@@ -698,6 +709,8 @@ class _NamePillState extends ConsumerState<_NamePill> {
     final t = NoorTheme.of(context);
     final room = widget.room;
     final n = ref.read(roomProvider.notifier);
+    ref.watch(roomNameProvider);
+    final me = _myName();
     Widget round(IconData icon, String label, VoidCallback? onTap,
             {Key? key, bool danger = false, bool filled = false}) =>
         Padding(
@@ -773,18 +786,17 @@ class _NamePillState extends ConsumerState<_NamePill> {
       final alone = room.members.length <= 1;
       row = Row(children: [
         Expanded(
-          child: Text(cleanRoomName(room.name),
+          child: Text(me,
+              key: const ValueKey('room-my-name'),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: noorSongTitleStyle(t.ac, size: 24)),
         ),
-        if (widget.star)
-          round(
-              Icons.edit_outlined,
-              'Change your name',
-              () => setState(() => _edit =
-                  TextEditingController(text: cleanRoomName(room.name))),
-              key: const ValueKey('room-rename-edit')),
+        round(
+            Icons.edit_outlined,
+            'Change your name',
+            () => setState(() => _edit = TextEditingController(text: me)),
+            key: const ValueKey('room-rename-edit')),
         // Alone in this phone's own room: leaving gives a fresh code.
         round(
             widget.star && alone

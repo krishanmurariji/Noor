@@ -17,7 +17,7 @@
         "members": {
           "$uid": {
             ".read": "auth != null && auth.uid === $uid",
-            ".write": "auth != null && auth.uid === $uid && data.exists() && (!newData.exists() || newData.child('name').val() === data.child('name').val())",
+            ".write": "auth != null && auth.uid === $uid && data.exists() && (!newData.exists() || newData.child('name').isString())",
             "name": { ".validate": "newData.isString() && newData.val().length <= 24" }
           }
         },

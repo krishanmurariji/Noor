@@ -661,6 +661,63 @@ void main() {
       });
     });
 
+    testWidgets(
+        'a listener sees their own name in the panel and can change it',
+        (tester) async {
+      final db = MemoryRoomDb();
+      await MemoryRoomStore(db, 'x').write('rooms/STAR42', {
+        'info': {'star': 'uid-s', 'starName': 'Aanya', 'name': 'Aanya'},
+        'members': {
+          'uid-s': {'name': 'Aanya', 'at': 1, 'seen': 9e15},
+          'uid-rohan': {'name': 'Rohan', 'at': 2, 'seen': 9e15},
+        },
+      });
+      SharedPreferences.setMockInitialValues(
+          {'room_my_name': 'Rohan', 'room_code': 'STAR42'});
+      await tester.pumpWidget(app(db, uid: 'uid-rohan'));
+      await realTime(tester);
+      await tester.tap(find.byKey(const ValueKey('room-pill')));
+      await tester.pumpAndSettle();
+      // Their own name, with edit and leave on the right.
+      expect(
+          tester
+              .widget<Text>(find.byKey(const ValueKey('room-my-name')))
+              .data,
+          'Rohan');
+      expect(find.byKey(const ValueKey('room-leave')), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('room-rename-edit')));
+      await tester.pumpAndSettle();
+      // Editing: tick and cross; the cross keeps the old name.
+      expect(find.byKey(const ValueKey('room-rename-save')), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('room-rename-cancel')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('room-rename')), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('room-rename-edit')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('room-rename')), '');
+      await tester.enterText(
+          find.byKey(const ValueKey('room-rename')), 'Rohan K');
+      await tester.runAsync(() async {
+        await tester.tap(find.byKey(const ValueKey('room-rename-save')));
+        await _settle();
+      });
+      await tester.pumpAndSettle();
+      expect(
+          tester
+              .widget<Text>(find.byKey(const ValueKey('room-my-name')))
+              .data,
+          'Rohan K');
+      final members =
+          ((db.tree.value as Map)['rooms']['STAR42'] as Map)['members'] as Map;
+      expect((members['uid-rohan'] as Map)['name'], 'Rohan K');
+      await tester.runAsync(() async {
+        ProviderScope.containerOf(tester.element(find.byType(RoomPill)))
+            .read(roomProvider.notifier)
+            .controller!
+            .dispose();
+      });
+    });
+
     testWidgets('requests are answered in a pop-up in the middle',
         (tester) async {
       SharedPreferences.setMockInitialValues({'room_my_name': 'Aanya'});
