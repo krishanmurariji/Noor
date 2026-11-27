@@ -37,7 +37,7 @@ The rules decide who may read or write.
   or blocking them, the song, the queue, and handing over the star.
 - Anyone else can only:
   - ask to join for themselves (not when blocked), or cancel the request;
-  - leave, or update their own "still here" time;
+  - leave, change their own name, or update their own "still here" time;
   - ask for a song, or to be the star, in their own name.
 - Room codes are six characters, and nothing lists all the rooms.
 
