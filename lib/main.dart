@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app.dart';
+import 'app_version.dart';
 import 'providers/library_provider.dart';
 import 'theme/noor_palette.dart';
 import 'services/app_log.dart';
@@ -65,6 +66,7 @@ Future<void> main() async {
   try {
     await AppLog.instance.persistTo(await getApplicationSupportDirectory());
   } catch (_) {}
+  nlog('[N] Noor ${AppVersion.label} started');
   unawaited(logPastExits());
 
   unawaited(_removeLegacyApiKey());

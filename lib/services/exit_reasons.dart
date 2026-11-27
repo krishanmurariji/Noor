@@ -2,6 +2,7 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_log.dart';
+import 'native_ready.dart';
 
 const _exits = MethodChannel('noor/exits');
 const _kSeen = 'exit_reasons_seen_until';
@@ -10,6 +11,12 @@ const _kSeen = 'exit_reasons_seen_until';
 /// (Android keeps the reasons: a crash, a freeze, low memory, killed by the
 /// system, closed by the user…), and any crash Noor wrote down itself.
 Future<void> logPastExits() async {
+  // Android answers only once its side of Noor is up (Flutter starts a
+  // moment earlier); asking before that failed quietly.
+  if (!await nativeReady()) {
+    nlog('[N] could not ask Android why Noor closed last time');
+    return;
+  }
   try {
     final crash = await _exits.invokeMethod<String>('crash');
     if (crash != null && crash.trim().isNotEmpty) {
@@ -33,6 +40,11 @@ Future<void> logPastExits() async {
           '${desc.isEmpty ? '' : ' · $desc'}'
           '${mb > 0 ? ' · using $mb MB' : ''}');
     }
+    if (newest == seen) {
+      nlog('[N] Android has no new record of Noor closing');
+    }
     if (newest > seen) await prefs.setInt(_kSeen, newest);
-  } catch (_) {/* not Android, or an old one */}
+  } catch (e) {
+    nlog('[N] could not read why Noor closed: $e');
+  }
 }
