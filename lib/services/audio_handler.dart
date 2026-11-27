@@ -600,9 +600,13 @@ class NebulaAudioHandler extends BaseAudioHandler with SeekHandler {
     _acquirer.cancelAll();
     _current = song;
 
+    // Still "playing" while the next song loads: telling Android "not
+    // playing" takes away the music notification's protection, and in the
+    // background it can't come back, so Android treats Noor like any other
+    // background app and closes it (EXCESSIVE CPU).
     playbackState.add(playbackState.value.copyWith(
         processingState: AudioProcessingState.loading,
-        playing: false,
+        playing: true,
         queueIndex: _idx));
     mediaItem.add(MediaItem(
       id: song.videoId,
@@ -1173,7 +1177,10 @@ class NebulaAudioHandler extends BaseAudioHandler with SeekHandler {
 
   void _broadcast(PlaybackEvent e) {
     final switching = _switching;
-    final playing = !switching && _player.playing;
+    // Loading the next song counts as playing (see _requestLoad); waiting
+    // for YouTube doesn't.
+    final playing =
+        switching ? !isWaitingForYoutube : _player.playing;
     playbackState.add(playbackState.value.copyWith(
       controls: [
         MediaControl.skipToPrevious,

@@ -20,6 +20,10 @@ class CpuWatch {
   int? _lastTotal;
   DateTime? _lastAt;
   Map<String, int> _lastThreads = {};
+  bool? _wasProtected;
+
+  /// Whether music is meant to be playing (set by the app).
+  bool Function()? playing;
 
   /// Extra context for the log line ("playing", "room: star"…).
   String Function()? describe;
@@ -49,6 +53,20 @@ class CpuWatch {
       threads[id] = (t['ticks'] as num?)?.toInt() ?? 0;
       names[id] = '${t['name']}';
     }
+    // 100 on screen, 125 kept alive by the music notification.
+    final importance = (m['importance'] as num?)?.toInt() ?? 0;
+    final protected = importance > 0 && importance <= 125;
+    final away0 = WidgetsBinding.instance.lifecycleState != null &&
+        WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed;
+    if (away0 && (playing?.call() ?? false) && protected != _wasProtected) {
+      nlog(protected
+          ? '[N] music notification keeps Noor alive in the background'
+          : '[N] playing in the background without the music notification\'s '
+              'protection (Android rank $importance): Android may close Noor');
+      _wasProtected = protected;
+    } else if (!away0) {
+      _wasProtected = null;
+    }
     final lastTotal = _lastTotal, lastAt = _lastAt;
     if (log && lastTotal != null && lastAt != null) {
       final wall = now.difference(lastAt).inMilliseconds;
@@ -73,6 +91,7 @@ class CpuWatch {
             '${(used / 1000).toStringAsFixed(1)}s of processor in '
             '${(wall / 1000).round()}s (${(share * 100).round()}%)'
             '${describe == null ? '' : ' · ${describe!()}'}'
+            ' · rank $importance'
             ' · busiest: $busiest');
       }
     }

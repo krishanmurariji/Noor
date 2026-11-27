@@ -94,6 +94,8 @@ class NebulaApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final themeMode = ref.watch(themeProvider);
     // What Noor is up to, for the processor watchdog's log line.
+    CpuWatch.instance.playing = () =>
+        ref.read(playerProvider).status == NebulaPlayerStatus.playing;
     CpuWatch.instance.describe = () {
       final p = ref.read(playerProvider).status.name;
       final r = ref.read(roomProvider);

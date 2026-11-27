@@ -131,7 +131,15 @@ class MainActivity : AudioServiceActivity() {
                 } catch (ignored: Throwable) {}
             }
         } catch (ignored: Throwable) {}
+        // How Android ranks Noor now: 125 = kept alive by the music
+        // notification, 100 = on screen, higher = an ordinary background app.
+        val importance = try {
+            val info = android.app.ActivityManager.RunningAppProcessInfo()
+            android.app.ActivityManager.getMyMemoryState(info)
+            info.importance
+        } catch (ignored: Throwable) { 0 }
         return mapOf(
+            "importance" to importance,
             "totalMs" to android.os.Process.getElapsedCpuTime(),
             "threads" to threads,
         )
